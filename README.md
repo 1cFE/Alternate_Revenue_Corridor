@@ -50,6 +50,28 @@ python revenue_tornado.py          # figures/revenue_tornado.png
 The gold co-product ledger and the three interactive tools were produced against a
 1costingFE working tree; see [Why a patch](#why-a-patch) if you want to reproduce those.
 
+### A note on the pin
+
+The commit above is pinned deliberately. `master` has moved on, and re-deriving the cost
+points against it shifts the 1 GWe D-T tokamak baseline by a measured **-1.5%**:
+
+| | pinned `6276a84` | `master` at `44434d9` |
+|---|---|---|
+| LCOE | $110.54/MWh | **$108.87/MWh** |
+
+Almost all of that is one change. ICRF was repriced from $4.38/MW to $1.00/MW and LHCD
+from $4.23 to $1.00, both restated as explicit NOAK estimates rather than implied
+anchors. The default D-T tokamak heating mix carries 15 MW of ICRF, so the heating
+account C220104 falls $99.8M and the installation fraction riding on it another $14.0M. A
+smaller change in the other direction re-bases the primary coolant account on thermal
+rather than net electric power, worth +$10.1M here. The first-wall and coil accounts are
+untouched.
+
+Nothing in this repository depends on which commit you use -- the committed datasets are
+the ones the published figures were drawn from. The shift matters only if you re-derive
+the cost points yourself, and it moves every rung down by about the same proportion, so
+no conclusion changes.
+
 ## What each file does
 
 | File | Role |
