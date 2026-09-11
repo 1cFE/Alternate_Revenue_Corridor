@@ -1,0 +1,223 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Hydrogen-led fusion plant — power vs H₂ dispatch</title>
+<style>
+  :root{--ink:#1e2530;--mut:#5b6472;--line:#dce1e7;--bg:#f5f7f9;--card:#fff;
+        --blue:#2471a3;--elec:#1b6ca8;--h2:#1b998b;--green:#2f9e63;--red:#c0392b;--amber:#d69220;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14.5px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1220px;margin:0 auto;padding:22px 26px 40px;}
+  h1{font-size:22px;margin:0 0 3px;letter-spacing:-.01em;}
+  .sub{color:var(--mut);margin:0 0 12px;font-size:13.5px;}
+  .setup{margin:0 0 18px;padding-left:18px;color:var(--mut);font-size:13px;line-height:1.5;}
+  .setup li{margin-bottom:5px;} .setup b{color:var(--ink);} .setup a{color:var(--blue);}
+  .controls{display:flex;gap:24px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
+            border-radius:10px;padding:16px 20px;margin-bottom:18px;align-items:center;}
+  .ctl{flex:1;min-width:200px;}
+  .ctl label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;}
+  .ctl .hint{color:var(--mut);font-size:11.5px;font-weight:400;}
+  input[type=range]{width:100%;accent-color:var(--blue);}
+  .bounds{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;color:var(--mut);margin-top:4px;font-variant-numeric:tabular-nums;}
+  .bounds b{color:var(--blue);font-weight:700;font-size:13.5px;}
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  #chart{width:100%;}
+  .ticker-lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);}
+  .metric{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.12;margin:1px 0;}
+  .metric small{font-size:14px;font-weight:600;color:var(--mut);}
+  .cfg{font-size:13px;font-weight:600;margin:10px 0 3px;color:var(--ink);}
+  .subline{font-size:12.5px;margin:-1px 0 12px;color:var(--mut);}
+  table.items{width:100%;border-collapse:collapse;font-size:13px;}
+  table.items td{padding:4px 2px;border-bottom:1px solid #eef1f4;font-variant-numeric:tabular-nums;}
+  table.items tr.sec td{font-weight:700;color:var(--mut);font-size:11px;text-transform:uppercase;
+     letter-spacing:.05em;border-bottom:none;padding-top:9px;}
+  table.items td.v{text-align:right;font-weight:600;}
+  table.items tr.tot td{border-top:2px solid var(--line);border-bottom:none;font-weight:700;padding-top:8px;}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;}
+  .assump{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;font-size:12.5px;}
+  .assump summary{cursor:pointer;font-weight:600;color:var(--blue);list-style:revert;font-size:14.5px;text-align:center;}
+  .assump ul{margin:9px 0 2px;padding-left:18px;color:var(--mut);line-height:1.55;}
+  .assump li{margin-bottom:5px;} .assump b{color:var(--ink);}
+  @media(max-width:820px){.grid{grid-template-columns:1fr;}}
+</style></head>
+<body><div class="wrap">
+  <h1>Hydrogen-led fusion plant — power vs H₂ dispatch</h1>
+  <p class="sub"><b>What this shows:</b> a low-LCOE fusion plant runs its reactor <b>flat-out</b> and splits the busbar between the grid and a baseload electrolyzer — making H₂ whenever power is cheap and <b>diverting to the grid only during price spikes</b>. Set the plant's cost, the H₂ price, the electrolyzer size, and the grid's price shape; the tool re-computes the <b>grid LCOE after crediting H₂ revenue</b>, the power/H₂ split, and NPV live.</p>
+  <ul class="setup">
+    <li><b>Reactor + turbine run constant</b> — only the electrical routing (grid vs electrolyzer) varies, so fusion never ramps. Electrolyzer: alkaline, 52&nbsp;kWh/kg (≈19&nbsp;kg&nbsp;H₂/MWh).</li>
+    <li><b>Dispatch rule:</b> each hour, sell to the grid if the price beats the H₂ value (<b>H₂ floor</b> = H₂ price × 19&nbsp;kg/MWh, net of logistics); otherwise make H₂ up to the electrolyzer's capacity (excess at negative prices is curtailed).</li>
+    <li><b>Grid interconnect sized for full output</b> so it can export the peak; the electrolyzer stays highly utilized as the base load.</li>
+    <li><b>"H₂-credited" LCOE</b> = (reactor + electrolyzer + logistics cost − H₂ sales) ÷ grid MWh — i.e. what the electricity costs once the H₂ business pays its share.</li>
+  </ul>
+
+  <div class="controls">
+    <div class="ctl">
+      <label>Plant LCOE <span class="hint">$/MWh · underlying fusion cost</span></label>
+      <input type="range" id="lcoe" min="20" max="120" step="5" value="35">
+      <div class="bounds"><span>$20</span><b id="lcoeL">$35</b><span>$120</span></div>
+    </div>
+    <div class="ctl">
+      <label>H₂ price <span class="hint">$/kg · sale price</span></label>
+      <input type="range" id="h2" min="1" max="6" step="0.25" value="3.5">
+      <div class="bounds"><span>$1</span><b id="h2L">$3.5</b><span>$6</span></div>
+    </div>
+    <div class="ctl">
+      <label>Electrolyzer size <span class="hint">% of net power</span></label>
+      <input type="range" id="ely" min="20" max="100" step="5" value="90">
+      <div class="bounds"><span>20%</span><b id="elyL">90%</b><span>100%</span></div>
+    </div>
+    <div class="ctl">
+      <label>Grid mean price <span class="hint">$/MWh · wholesale avg</span></label>
+      <input type="range" id="mean" min="20" max="90" step="5" value="40">
+      <div class="bounds"><span>$20</span><b id="meanL">$40</b><span>$90</span></div>
+    </div>
+    <div class="ctl">
+      <label>Grid volatility <span class="hint">VRE penetration · price spread</span></label>
+      <input type="range" id="vol" min="0.2" max="2" step="0.1" value="1">
+      <div class="bounds"><span>0.2×</span><b id="volL">1.0×</b><span>2×</span></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div id="chart"></div>
+      <details class="assump">
+        <summary>Model assumptions</summary>
+        <ul>
+          <li><b>Plant:</b> 1&nbsp;GW<sub>e</sub>-class D-T tokamak, ~1,000&nbsp;MW<sub>e</sub> net, constant output, availability 0.85. "Plant LCOE" is the underlying levelized cost you set (a NOAK low-cost plant is the interesting regime).</li>
+          <li><b>Electrolyzer:</b> alkaline, 52&nbsp;kWh/kg → 19.2&nbsp;kg&nbsp;H₂/MWh; capex $700/kW, O&amp;M 3%/yr, CRF 8%/30&nbsp;yr (incl. stack replacement in O&amp;M).</li>
+          <li><b>H₂ logistics:</b> $0.80/kg (compression + salt-cavern buffer + pipeline/transport), subtracted from the H₂ sale price.</li>
+          <li><b>Grid prices:</b> an annual price-duration curve set by the mean and a volatility (VRE) slider; higher volatility deepens the cheap/negative tail and raises scarcity peaks. Negative-price surplus beyond the electrolyzer is curtailed.</li>
+          <li><b>Dispatch:</b> sell to grid when price &gt; H₂ floor (= (H₂ price − logistics) × 19&nbsp;kg/MWh), else make H₂. Reactor/turbine never ramp; only the grid/electrolyzer split changes.</li>
+          <li><b>Metrics:</b> the grid LCOE credits H₂ net revenue against total cost over grid MWh (a byproduct-credit view — it turns sharply negative once H₂ over-covers the plant, i.e. electricity becomes the byproduct). NPV = level annual profit × 12.4.</li>
+        </ul>
+      </details>
+    </div>
+    <div class="card">
+      <div class="ticker-lbl">Grid LCOE — after H₂ credit</div>
+      <div class="metric" id="mLcoe">&mdash;</div>
+      <div class="ticker-lbl" style="margin-top:10px">Plant NPV (30 yr)</div>
+      <div class="metric" id="mNpv">&mdash;</div>
+      <div class="cfg" id="cfg"></div>
+      <div class="subline" id="subline"></div>
+      <table class="items" id="items"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- constants ----
+const PNET=1000, KG=1000/52, AVAIL=0.85, CRF=0.0806, ANN=12.409;
+const ELY_CAPEX=700, ELY_OM=0.03, LOG=0.80;   // $/kW, /yr, $/kg logistics
+
+function duration(mean,vol,N){
+  const p=[];
+  for(let i=0;i<N;i++){ const x=i/(N-1);
+    const base=Math.sign(x-0.5)*Math.pow(Math.abs(2*(x-0.5)),1.5);
+    const spike=x>0.9?Math.pow((x-0.9)/0.1,2)*3:0;
+    p.push(mean+vol*(base*40+spike*40));
+  } return p;
+}
+function evaluate(lcoe,h2,elyfrac,mean,vol){
+  const pr=duration(mean,vol,100), N=pr.length, w=1/N;
+  const floor=KG*(h2-LOG), E=elyfrac*PNET;
+  let gMWh=0,hMWh=0,grev=0,curt=0;
+  for(const p of pr){ const hrs=w*8760*AVAIL; let g,h,gr;
+    if(p>floor){ g=PNET; h=0; gr=g*p; }
+    else { h=Math.min(PNET,E); const ex=PNET-h; g=p>0?ex:0; gr=g*Math.max(p,0); if(p<=0) curt+=ex*hrs; }
+    gMWh+=g*hrs; hMWh+=h*hrs; grev+=gr*hrs;
+  }
+  const h2mass=hMWh*KG;
+  const h2gross=h2mass*h2/1e6, logCost=h2mass*LOG/1e6;     // M$
+  const plant=lcoe*PNET*8760*AVAIL/1e6, ely=E*1000*ELY_CAPEX*(CRF+ELY_OM)/1e6;
+  const gridRev=grev/1e6;
+  const netLcoe=gMWh>1e3?(plant+ely+logCost-h2gross)*1e6/gMWh:NaN;
+  const npv=(gridRev+h2gross-plant-ely-logCost)*ANN/1e3;   // $B
+  const h2cost=h2mass>0?lcoe/KG+ely*1e6/h2mass+LOG:NaN;
+  return {pr,floor,E,h2share:hMWh/(hMWh+gMWh)*100,elyCF:hMWh/(E*8760*AVAIL)*100,
+          h2kt:h2mass/1e6,netLcoe,npv,h2cost,gridTWh:gMWh/1e6,curtTWh:curt/1e6,
+          captured:gMWh>1e3?gridRev*1e6/gMWh:NaN,plant,ely,logCost,h2gross,gridRev,lcoe};
+}
+
+const fmt=(x,d=0)=>x.toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+const money=x=>(x<0?'−$':'$')+fmt(Math.abs(x),0)+'M';
+
+function render(){
+  const lcoe=+lcoeEl.value, h2=+h2El.value, elyf=+elyEl.value/100, mean=+meanEl.value, vol=+volEl.value;
+  lcoeL.textContent='$'+fmt(lcoe); h2L.textContent='$'+fmt(h2,2); elyL.textContent=fmt(elyf*100)+'%';
+  meanL.textContent='$'+fmt(mean); volL.textContent=fmt(vol,1)+'×';
+  const r=evaluate(lcoe,h2,elyf,mean,vol);
+
+  // headline: grid LCOE after H2 credit
+  if(isNaN(r.netLcoe)){ mLcoeEl.innerHTML='&mdash; <small>all to H₂</small>'; mLcoeEl.style.color='var(--h2)'; }
+  else { mLcoeEl.innerHTML=(r.netLcoe<0?'−$':'$')+fmt(Math.abs(r.netLcoe),0)+' <small>/MWh</small>';
+         mLcoeEl.style.color=r.netLcoe<0?'var(--h2)':(r.netLcoe<lcoe?'var(--green)':'var(--ink)'); }
+  mNpvEl.innerHTML=(r.npv<0?'−$':'$')+fmt(Math.abs(r.npv),2)+' <small>B</small>';
+  mNpvEl.style.color=r.npv>=0?'var(--green)':'var(--red)';
+
+  cfgEl.innerHTML=`<b>${fmt(r.h2share)}%</b> of energy → H₂ &middot; electrolyzer CF <b>${fmt(r.elyCF)}%</b> `
+    +`&middot; <b>${fmt(r.h2kt)}</b> kt&nbsp;H₂/yr &middot; grid <b>${fmt(r.gridTWh,1)}</b> TWh`;
+  subEl.innerHTML=`plant LCOE $${fmt(lcoe)} → grid LCOE <b>${isNaN(r.netLcoe)?'&mdash;':(r.netLcoe<0?'−$':'$')+fmt(Math.abs(r.netLcoe))}</b> after H₂ credit `
+    +`&nbsp;&middot;&nbsp; H₂ floor <b>$${fmt(r.floor)}</b>/MWh &middot; delivered H₂ <b>$${fmt(r.h2cost,2)}</b>/kg`;
+
+  const rows=[
+    ['sec','REVENUE',''],
+    ['#1b998b','H₂ sales (gross)','+'+money(r.h2gross)],
+    ['#1b6ca8','Grid power (scarcity)','+'+money(r.gridRev)],
+    ['sec','ANNUALIZED COST',''],
+    ['#7a8697','Reactor / plant','−'+money(r.plant)],
+    ['#5b6472','Electrolyzer','−'+money(r.ely)],
+    ['#c07a2b','H₂ logistics','−'+money(r.logCost)],
+  ];
+  let html=''; rows.forEach(([c,l,v])=>{ html+= c==='sec'
+    ? `<tr class="sec"><td colspan="2">${l}</td></tr>`
+    : `<tr><td><span class="sw" style="background:${c}"></span>${l}</td><td class="v">${v}</td></tr>`; });
+  html+=`<tr class="tot"><td>Annual profit</td><td class="v">${money(r.npv/ANN*1e3)}/yr</td></tr>`;
+  itemsEl.innerHTML=html;
+
+  drawChart(r);
+}
+
+function drawChart(r){
+  const P=r.pr, N=P.length;
+  const W=560,H=300,mL=54,mR=16,mT=30,mB=50,pw=W-mL-mR,plotH=H-mT-mB;
+  const yhi=Math.max(...P,r.floor)*1.06, ylo=Math.min(0,...P,r.floor);
+  const X=i=>mL+(i/(N-1))*pw, Y=v=>mT+plotH-((v-ylo)/(yhi-ylo))*plotH, px=v=>v.toFixed(1);
+  let xc=N-1; for(let i=0;i<N;i++){ if(P[i]>=r.floor){ xc=i; break; } }
+  let g='';
+  // shaded regions: H2 (left/cheap) teal, grid (right/pricey) blue
+  g+=`<rect x="${px(X(0))}" y="${mT}" width="${px(X(xc)-X(0))}" height="${plotH}" fill="rgba(27,153,139,0.13)"/>`;
+  g+=`<rect x="${px(X(xc))}" y="${mT}" width="${px(X(N-1)-X(xc))}" height="${plotH}" fill="rgba(27,108,168,0.10)"/>`;
+  // y gridlines + labels
+  for(let i=0;i<=4;i++){ const yv=ylo+(yhi-ylo)*i/4, yy=Y(yv);
+    g+=`<line x1="${mL}" y1="${px(yy)}" x2="${W-mR}" y2="${px(yy)}" stroke="#eef1f4"/>`;
+    g+=`<text x="${mL-6}" y="${px(yy+3)}" text-anchor="end" font-size="10" fill="#8593a2">$${fmt(yv)}</text>`; }
+  if(ylo<0){ g+=`<line x1="${mL}" y1="${px(Y(0))}" x2="${W-mR}" y2="${px(Y(0))}" stroke="#c9ccd1" stroke-width="1"/>`; }
+  // x ticks (share of hours)
+  for(let k=0;k<=4;k++){ const i=k*(N-1)/4; g+=`<text x="${px(X(i))}" y="${H-mB+16}" text-anchor="middle" font-size="10" fill="#8593a2">${k*25}%</text>`; }
+  // H2 floor line
+  g+=`<line x1="${px(X(0))}" y1="${px(Y(r.floor))}" x2="${px(X(N-1))}" y2="${px(Y(r.floor))}" stroke="#1b998b" stroke-width="2" stroke-dasharray="5 4"/>`;
+  g+=`<text x="${W-mR-2}" y="${px(Y(r.floor)-4)}" text-anchor="end" font-size="9.5" fill="#1b998b">H₂ value $${fmt(r.floor)}/MWh</text>`;
+  // price duration curve
+  g+=`<polyline points="${P.map((v,i)=>px(X(i))+','+px(Y(v))).join(' ')}" fill="none" stroke="#1b6ca8" stroke-width="2.4"/>`;
+  // region labels
+  if(xc>4) g+=`<text x="${px(X(xc/2))}" y="${mT+plotH-8}" text-anchor="middle" font-size="10.5" fill="#137a6d">make H₂</text>`;
+  if(xc<N-4) g+=`<text x="${px((X(xc)+X(N-1))/2)}" y="${mT+16}" text-anchor="middle" font-size="10.5" fill="#1b6ca8">sell to grid</text>`;
+  // titles
+  g+=`<text x="${mL}" y="16" font-size="12.5" font-weight="600" fill="#1e2530">Annual price-duration curve &amp; dispatch split</text>`;
+  g+=`<text x="${px(mL+pw/2)}" y="${H-4}" text-anchor="middle" font-size="10" fill="#5b6472">share of hours (cheapest → priciest)</text>`;
+  g+=`<text x="13" y="${px(mT+plotH/2)}" text-anchor="middle" font-size="10" fill="#5b6472" transform="rotate(-90 13 ${px(mT+plotH/2)})">$/MWh</text>`;
+  document.getElementById('chart').innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto" preserveAspectRatio="xMidYMid meet" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`;
+}
+
+const lcoeEl=document.getElementById('lcoe'),h2El=document.getElementById('h2'),elyEl=document.getElementById('ely'),
+      meanEl=document.getElementById('mean'),volEl=document.getElementById('vol'),
+      lcoeL=document.getElementById('lcoeL'),h2L=document.getElementById('h2L'),elyL=document.getElementById('elyL'),
+      meanL=document.getElementById('meanL'),volL=document.getElementById('volL'),
+      mLcoeEl=document.getElementById('mLcoe'),mNpvEl=document.getElementById('mNpv'),
+      cfgEl=document.getElementById('cfg'),subEl=document.getElementById('subline'),itemsEl=document.getElementById('items');
+[lcoeEl,h2El,elyEl,meanEl,volEl].forEach(e=>e.addEventListener('input',render));
+render();
+</script>
+</body></html>

@@ -1,0 +1,1183 @@
+diff --git a/cogen_capacity_optimizer.py b/cogen_capacity_optimizer.py
+new file mode 100644
+index 0000000..e87c5d7
+--- /dev/null
++++ b/cogen_capacity_optimizer.py
+@@ -0,0 +1,62 @@
++"""Fixed firm heat (200 MW_th at fixed $/MWh_th). Mh/Me slider drives the
++ELECTRICITY price (Me = Mh / ratio). Optimize total reactor size (=> % cogen)
++for max NPV. Reactor is baseload; a 4 h TES lets the plant throttle power UP
++during the 4 evening-peak hours (heat covered from TES). Capacity market pays
++$/kW-yr on the peak-deliverable turbine. Reactor scaling from 1costingFE."""
++import numpy as np
++
++PTH=np.array([796,1128,1699,2452,3140,4207,5332.]); RCAP=np.array([4215,5000,6140,7384,8356,9656,11132.])
++reactor_cap=lambda Q: float(np.interp(Q,PTH,RCAP))
++MULT=np.array([0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
++               0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88]); MULT=MULT/MULT.mean()
++ETA=0.40; AVAIL=0.85; CRF=0.0806; ANN=12.409
++TURBk=258; TESk=30; BOPk=200; MH=30.0; HFIRM=200.0; TES_H=4.0
++HRS=365*AVAIL; tesMwh=HFIRM*TES_H
++
++def evaluate(Q, ratio, capkw, smart=True):
++    ME=MH/ratio; PRICE=MULT*ME
++    order=np.argsort(PRICE)[::-1]; top=PRICE[order[:4]]; off=PRICE[order[4:]]
++    heatRev=HFIRM*MH*8760*AVAIL/1e6
++    if smart:                       # throttle up in top-4 hrs (Q*eta), heat from TES
++        peakMWe=Q*ETA
++        powRev=ETA*(Q*top.sum() + (Q-240)*off.sum())*365*AVAIL/1e6
++        turbMWe=Q*ETA; tes=tesMwh
++    else:                           # rigid: flat baseload power, no TES, no boost
++        peakMWe=(Q-HFIRM)*ETA
++        powRev=(Q-HFIRM)*ETA*ME*8760*AVAIL/1e6
++        turbMWe=(Q-HFIRM)*ETA; tes=0.0
++    capRev=peakMWe*1e3*capkw/1e6
++    cap=reactor_cap(Q)+TURBk*turbMWe*1e3/1e6+TESk*tes*1e3/1e6+BOPk*HFIRM*1e3/1e6
++    om=127.0*Q/3140.0
++    profit=powRev+heatRev+capRev-(CRF*cap+om)
++    return dict(npv=profit*ANN/1e3, profit=profit, cogen=HFIRM/Q*100, turbMWe=turbMWe,
++                powRev=powRev, heatRev=heatRev, capRev=capRev, cap=cap, ME=ME, peakMWe=peakMWe)
++
++def optimize(ratio, capkw, smart=True):
++    Qs=np.linspace(800,6000,260)
++    best=None
++    for Q in Qs:
++        r=evaluate(Q,ratio,capkw,smart)
++        if best is None or r['npv']>best[1]['npv']: best=(Q,r)
++    return best
++
++CAP=87.5   # $/kW-yr midpoint of 75-100
++print(f"Firm heat 200 MW_th @ ${MH}/MWh_th ; TES 4 h ; capacity ${CAP}/kW-yr\n")
++print(f"{'Mh/Me':>6}{'Me $/MWh':>10}{'opt %cogen':>11}{'reactor MW_th':>14}{'turbine MWe':>12}{'NPV $B':>9}{'TES+disp add $B':>16}")
++for ratio in [0.25,0.4,0.5,0.7,1.0]:
++    Q,r=optimize(ratio,CAP,smart=True)
++    _,rb=optimize(ratio,CAP,smart=False)                    # best rigid plant
++    # NPV added by TES+smart at the SAME optimal reactor:
++    r_rigid_sameQ=evaluate(Q,ratio,CAP,smart=False)
++    add=(r['npv']-r_rigid_sameQ['npv'])
++    print(f"{ratio:>6}{r['ME']:>10.0f}{r['cogen']:>10.1f}%{Q:>14.0f}{r['turbMWe']:>12.0f}{r['npv']:>9.2f}{add:>16.2f}")
++
++print("\nDecompose the TES+smart-dispatch value (at Mh/Me=0.5, opt reactor):")
++Q,r=optimize(0.5,CAP,True); rr=evaluate(Q,0.5,CAP,False)
++print(f"  peak energy premium : +${(r['powRev']-rr['powRev']):.0f}M/yr")
++print(f"  extra firm capacity : +${(r['capRev']-rr['capRev']):.0f}M/yr  (turbine {r['turbMWe']:.0f} vs {rr['turbMWe']:.0f} MWe)")
++print(f"  minus TES capital   : -${CRF*(TESk*tesMwh*1e3/1e6):.1f}M/yr")
++print(f"  => net +${(r['profit']-rr['profit']):.0f}M/yr  = +${(r['npv']-rr['npv']):.2f}B NPV")
++print("\nCapacity-price sensitivity (Mh/Me=0.5):")
++for ck in [0,75,100]:
++    Q,r=optimize(0.5,ck,True); print(f"  ${ck}/kW-yr: opt %cogen {r['cogen']:.1f}%, reactor {Q:.0f} MW_th, NPV ${r['npv']:.2f}B")
+diff --git a/cogen_size_optimizer.py b/cogen_size_optimizer.py
+new file mode 100644
+index 0000000..12d2556
+--- /dev/null
++++ b/cogen_size_optimizer.py
+@@ -0,0 +1,57 @@
++"""Firm 200 MW_th heat anchor; upsize reactor+turbine for power if NPV-accretive.
++TES fixed 4 h (on the heat slice). Optimize reactor size (=> % cogen) for max NPV.
++Reactor capital scaling taken from 1costingFE (D-T tokamak)."""
++import numpy as np
++
++# reactor capital (excl turbine) vs thermal power, from 1costingFE
++PTH = np.array([796,1128,1699,2452,3140,4207,5332.])
++RCAP= np.array([4215,5000,6140,7384,8356,9656,11132.])   # M$
++def reactor_cap(Q): return np.interp(Q, PTH, RCAP)        # M$ (linear interp/extrap)
++
++MULT=np.array([0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
++               0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88])
++MULT=MULT/MULT.mean()
++ETA=0.40; AVAIL=0.85; CRF=0.0806; ANN=12.409
++TURBk=258; TESk=30; BOPk=200; HFIRM=200.0                 # MW_th firm heat
++TES_H=4.0; tesMwh=HFIRM*TES_H                             # 800 MWh_th
++HRS=365*AVAIL
++
++def npv(Q, ratio, ME):
++    PRICE=MULT*ME; MH=ratio*ME
++    top4=np.sort(PRICE)[::-1][:4]
++    powBase=(Q-HFIRM)*ETA                                 # MW_e baseload power
++    # revenue: baseload power at mean; +heat-slice diverted to power in top-4 hrs
++    powRevBase = powBase*PRICE.mean()*8760*AVAIL/1e6
++    flexPow = HFIRM*ETA                                   # 80 MW_e freed in peak hrs
++    powRevFlex = flexPow*top4.sum()*365*AVAIL/1e6 - flexPow*top4.size*PRICE.mean()*0  # peak-only
++    heatRev = HFIRM*MH*8760*AVAIL/1e6
++    turbMWe = Q*ETA                                       # sized to full-throttle peak
++    cap = reactor_cap(Q) + TURBk*turbMWe*1e3/1e6 + TESk*tesMwh*1e3/1e6 + BOPk*HFIRM*1e3/1e6
++    om  = 127.0*Q/3140.0 + 0.8                            # scale O&M with size
++    profit = powRevBase+powRevFlex+heatRev - (CRF*cap+om)
++    cogen = HFIRM/Q*100                                   # heat share of thermal
++    return profit*ANN/1e3, profit, cogen, turbMWe, cap    # NPV $B
++
++def optimize(ratio, ME):
++    Qs=np.linspace(800,6000,200)
++    res=[npv(Q,ratio,ME) for Q in Qs]
++    npvs=np.array([r[0] for r in res])
++    i=int(np.argmax(npvs))
++    return Qs[i], res[i]
++
++print("Marginal power LCOE (why upsizing pays despite $110 average LCOE):")
++for Q in [1500,3000,4500]:
++    dcap=(reactor_cap(Q+100)-reactor_cap(Q))+TURBk*100*ETA*1e3/1e6
++    dMWh=100*ETA*8760*AVAIL
++    print(f"  at Q={Q:.0f} MW_th: marginal +100 MW_th -> ${(CRF*dcap)*1e6/dMWh:.0f}/MWh_e")
++
++print("\nOptimal reactor size / % cogen  (firm 200 MW_th heat, 4 h TES):")
++print(f"{'Mh/Me':>7}{'Me $/MWh':>10}{'opt Q MW_th':>13}{'% cogen':>9}{'turbine MWe':>13}{'NPV $B':>9}")
++for ME in [60]:
++    for ratio in [0.2,0.5,0.8,1.0]:
++        Q,r=optimize(ratio,ME)
++        print(f"{ratio:>7}{ME:>10}{Q:>13.0f}{r[2]:>8.1f}%{r[3]:>13.0f}{r[0]:>9.2f}")
++print("  --- vs electricity price level (ratio fixed 0.5) ---")
++for ME in [40,60,80,120]:
++    Q,r=optimize(0.5,ME)
++    print(f"{0.5:>7}{ME:>10}{Q:>13.0f}{r[2]:>8.1f}%{r[3]:>13.0f}{r[0]:>9.2f}")
+diff --git a/heat_arbitrage_optimizer.py b/heat_arbitrage_optimizer.py
+new file mode 100644
+index 0000000..23e831a
+--- /dev/null
++++ b/heat_arbitrage_optimizer.py
+@@ -0,0 +1,115 @@
++"""Optimize turbine size (% cogen) for max NPV of a fusion cogen plant that
++firms a heat contract and arbitrages a volatile power market with TES.
++
++Plant: constant fusion thermal Q; a turbine of thermal capacity C converts to
++electricity (eta_gen); the rest is sold as firm heat at Mh, with TES buffering
++so the heat contract stays flat while electricity is timed into price peaks.
++
++Dispatch (merit order): each hour route thermal to electricity when it out-earns
++heat (eta_gen*p(t) > Mh), up to turbine capacity C; otherwise to heat. TES is
++sized to hold the heat contract flat across the electricity (peak) hours.
++"""
++import numpy as np
++import matplotlib.pyplot as plt
++
++# ---- representative US duck-curve day (normalized), CAISO/ERCOT-shaped -------
++MULT = np.array([0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
++                 0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88])
++MULT = MULT / MULT.mean()                      # mean = 1.0
++ME = 60.0                                       # $/MWh mean electricity price
++PRICE = MULT * ME                               # hourly $/MWh
++MH_RATIO = 0.5
++MH = MH_RATIO * ME                              # $/MWh_th firm heat price
++
++# ---- plant + economics ------------------------------------------------------
++Q = 2500.0            # MW_th constant fusion thermal (~1 GWe-equiv at eta_gen)
++ETA = 0.40
++AVAIL = 0.85
++# Steam turbine is NOT a fast starter: keep it warm at a minimum load so it can
++# ramp to full for the PREDICTABLE daily evening peak (no cold two-shifting, and
++# no chasing sub-hour scarcity spikes). This forces some off-peak electricity.
++MIN_LOAD_FRAC = 0.25
++CRF = 0.0806          # 7%/30 yr
++ANNUITY = 12.409      # sum discount, 7%/30yr  (NPV = profit * ANNUITY)
++BASE_CAP = 8614.0 - 258.0   # M$ plant capital minus the full turbine (CAS23)
++OM = 127.0; FUEL = 0.8       # M$/yr (CAS70, CAS80)
++TURB_PER_KWE = 258.0         # $/kW_e (CAS23 basis)
++TES_PER_KWHTH = 30.0         # $/kWh_th
++BOP_PER_KWTH = 200.0         # $/kW_th heat export
++
++def dispatch(C):
++    """Given turbine thermal capacity C, return per-hour electricity thermal,
++    firm heat H, TES size (MWh_th), and annual revenues."""
++    # warm turbine: full C when electricity out-earns heat, else min-load idle
++    peak = ETA * PRICE > MH
++    elec_hour = np.where(peak, np.minimum(C, Q), MIN_LOAD_FRAC * C)  # MW_th to turbine
++    heat_prod = Q - elec_hour                                       # MW_th to heat
++    H = heat_prod.mean()                                            # firm contract
++    # TES sizing: cumulative deviation of heat production from firm H (wrap 24h)
++    dev = heat_prod - H
++    cum = np.cumsum(np.concatenate([dev, dev]))    # two days to catch wrap
++    tes = cum.max() - cum.min()                    # MWh_th storage span
++    # annual revenue (M$)
++    hrs = 365.0 * AVAIL
++    elec_rev = (elec_hour * ETA * PRICE).sum() * hrs / 1e6
++    heat_rev = H * MH * 8760.0 * AVAIL / 1e6
++    # flat-price counterfactual (same electricity energy, sold at mean price)
++    elec_energy_mwh = (elec_hour * ETA).sum() * hrs
++    flat_rev = elec_energy_mwh * ME / 1e6
++    return elec_hour, H, tes, elec_rev, heat_rev, flat_rev
++
++def profit(C):
++    _, H, tes, elec_rev, heat_rev, flat_rev = dispatch(C)
++    cap = (BASE_CAP + TURB_PER_KWE * C * ETA * 1e3 / 1e6
++           + TES_PER_KWHTH * tes * 1e3 / 1e6 + BOP_PER_KWTH * H * 1e3 / 1e6)
++    ann_cost = CRF * cap + OM + FUEL
++    return elec_rev + heat_rev - ann_cost, H, tes, elec_rev, heat_rev, flat_rev, cap
++
++# ---- sweep turbine size -----------------------------------------------------
++Cs = np.linspace(50, Q, 120)
++res = [profit(C) for C in Cs]
++prof = np.array([r[0] for r in res])
++Hs   = np.array([r[1] for r in res])
++cogen_pct = Hs / Q * 100.0
++istar = int(np.argmax(prof))
++Cstar = Cs[istar]
++p, Hst, tesst, erev, hrev, frev, capst = profit(Cstar)
++
++print(f"Duck-curve day: mean ${ME}/MWh, peak ${PRICE.max():.0f}, trough ${PRICE.min():.0f} "
++      f"(peak/trough {PRICE.max()/PRICE.min():.1f}x); Mh=${MH:.0f}/MWh_th (Mh/Me={MH_RATIO})")
++print(f"Electricity beats heat when price > Mh/eta = ${MH/ETA:.0f}/MWh "
++      f"-> {(ETA*PRICE>MH).sum()} hrs/day\n")
++print(f"OPTIMUM: turbine C* = {Cstar:.0f} MW_th ({Cstar*ETA:.0f} MW_e), "
++      f"cogen = {Hst/Q*100:.0f}% heat / {100-Hst/Q*100:.0f}% elec-capable")
++print(f"  firm heat H = {Hst:.0f} MW_th ; TES = {tesst:.0f} MWh_th "
++      f"({tesst/Hst:.1f} h of heat)")
++print(f"  annual: elec ${erev:.0f}M (flat-price ${frev:.0f}M -> peaking premium +${erev-frev:.0f}M), "
++      f"heat ${hrev:.0f}M")
++print(f"  annual PROFIT ${p:.0f}M/yr ; NPV = ${p*ANNUITY/1e3:.2f}B ; capital ${capst:.0f}M")
++# compare to all-heat and all-electricity corners
++p_heat,_,_,_,_,_,_ = profit(50.0)
++p_full,_,_,_,_,_,_ = profit(Q)
++print(f"  vs all-heat corner ${p_heat:.0f}M/yr ; vs full-turbine ${p_full:.0f}M/yr")
++
++# ---- figure -----------------------------------------------------------------
++fig, (a1, a2) = plt.subplots(1, 2, figsize=(12.5, 5))
++a1.plot(range(24), PRICE, color="#1b6ca8", lw=2.2, marker="o", ms=3)
++a1.axhline(MH/ETA, ls="--", c="#c1440e", lw=1.3, label=f"elec beats heat  >${MH/ETA:.0f}/MWh")
++a1.fill_between(range(24), MH/ETA, PRICE, where=PRICE>MH/ETA, color="#c1440e", alpha=0.15)
++a1.set_xlabel("hour of day"); a1.set_ylabel("price [$/MWh]")
++a1.set_title(f"Representative US duck-curve day (mean ${ME})", fontweight="bold", fontsize=11)
++a1.legend(fontsize=8.5); a1.grid(alpha=0.3)
++
++a2.plot(cogen_pct, prof, lw=2.6, color="#2f9e63")
++a2.plot(Hst/Q*100, p, "o", ms=9, color="#c1440e",
++        label=f"optimum {Hst/Q*100:.0f}% cogen\nprofit ${p:.0f}M/yr")
++a2.set_xlabel("% cogen (firm heat share of thermal)")
++a2.set_ylabel("annual profit [$M/yr]")
++a2.set_title("Turbine size (% cogen) vs profit — load-following cogen (warm turbine)\n"
++             f"Mh/Me={MH_RATIO}, TES sized to firm heat", fontweight="bold", fontsize=11)
++a2.invert_xaxis()  # more heat (smaller turbine) to the right
++a2.legend(fontsize=9, loc="lower center"); a2.grid(alpha=0.3)
++fig.tight_layout()
++OUT = r"C:\Users\mallo\Deterministic_Concept_scoring\heat_arbitrage_optimization.png"
++fig.savefig(OUT, dpi=140)
++print("\nsaved:", OUT)
+diff --git a/heat_peaking_v2.py b/heat_peaking_v2.py
+new file mode 100644
+index 0000000..2197cf9
+--- /dev/null
++++ b/heat_peaking_v2.py
+@@ -0,0 +1,100 @@
++"""Fixed-price heat (constant Mh) + volatile Me(t). Two questions:
++  P1: does upsizing the steam turbine to catch the daily peak beat all-heat?
++      (hinges on turbine off-peak floor: two-shift vs must-run min-load)
++  P2: if the plant MUST deliver some net power, what is the optimal % cogen,
++      given TES and the 24h price volatility?
++"""
++import numpy as np
++import matplotlib.pyplot as plt
++
++MULT = np.array([0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
++                 0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88])
++MULT = MULT / MULT.mean()
++ME = 60.0
++PRICE = MULT * ME                 # Me(t), $/MWh
++MH = 0.5 * ME                     # constant contract heat price $30/MWh_th
++Q = 2500.0; ETA = 0.40; AVAIL = 0.85; CRF = 0.0806
++BASE_CAP = 8614.0 - 258.0; OM = 127.0; FUEL = 0.8
++TURB_PER_KWE = 258.0; TES_PER_KWHTH = 30.0; BOP_PER_KWTH = 200.0
++
++def dispatch(C, min_load=0.0, mandate_mwe=0.0, start_cost_k=0.0):
++    """Daily dispatch. Returns (profit M$/yr, cogen%, TES MWh_th, peaking premium)."""
++    peak = ETA * PRICE > MH
++    e = np.where(peak, min(C, Q), min_load * C)          # MW_th to turbine
++    # mandate: if daily elec energy short, raise highest-price off-peak hours to C
++    target = mandate_mwe * 24 / ETA                       # MW_th-hours/day needed
++    order = np.argsort(-PRICE)
++    i = 0
++    while e.sum() < target and i < 24:
++        h = order[i]
++        if e[h] < min(C, Q):
++            e[h] = min(C, Q)
++        i += 1
++    e = np.minimum(e, Q)
++    heat = Q - e
++    H = heat.mean()
++    dev = heat - H
++    cum = np.cumsum(np.concatenate([dev, dev]))
++    tes = cum.max() - cum.min()
++    hrs = 365.0 * AVAIL
++    elec_rev = (e * ETA * PRICE).sum() * hrs / 1e6
++    heat_rev = H * MH * 8760.0 * AVAIL / 1e6
++    flat_rev = (e * ETA).sum() * hrs * ME / 1e6
++    starts = 365.0 * (1.0 if (min_load == 0.0 and (e > 0).any()) else 0.0)
++    start_cost = starts * start_cost_k * (C * ETA) / 1e6  # $/MW_e/start -> M$
++    cap = (BASE_CAP + TURB_PER_KWE*C*ETA*1e3/1e6
++           + TES_PER_KWHTH*tes*1e3/1e6 + BOP_PER_KWTH*H*1e3/1e6)
++    profit = elec_rev + heat_rev - (CRF*cap + OM + FUEL) - start_cost
++    delivered_mwe = (e * ETA).sum() / 24.0
++    if delivered_mwe < mandate_mwe - 1e-6:          # infeasible: penalize
++        profit -= 1e5
++    return profit, H/Q*100, tes, elec_rev - flat_rev, elec_rev
++
++# ---- PART 1: does a turbine pay? sensitivity to off-peak floor --------------
++print("PART 1 — upsizing the turbine to catch the peak (constant Mh=$30, Me duck curve)")
++Cs = np.linspace(50, Q, 100)
++p1 = {}
++for ml, sc, lab in [(0.0, 30.0, "two-shift (off + $30/MW warm-start/day)"),
++                    (0.10, 0.0, "min-load 10%"),
++                    (0.25, 0.0, "min-load 25%")]:
++    prof = np.array([dispatch(C, min_load=ml, start_cost_k=sc)[0] for C in Cs])
++    p1[lab] = prof
++    i = int(np.argmax(prof))
++    print(f"  {lab:38s}: best at {dispatch(Cs[i],min_load=ml,start_cost_k=sc)[1]:.0f}% cogen, "
++          f"profit ${prof[i]:.0f}M/yr  (all-heat ${prof[0]:.0f}M/yr)")
++
++# ---- PART 2: forced to deliver net power -> optimal % cogen ------------------
++print("\nPART 2 — plant MUST deliver a minimum net electricity (min-load 25% steam)")
++print(f"{'mandate MWe':>12}{'opt %cogen':>12}{'opt turbine MWe':>16}{'TES MWh_th':>12}{'profit $M/yr':>14}")
++for mandate in [100, 200, 300, 500]:
++    prof = np.array([dispatch(C, min_load=0.25, mandate_mwe=mandate)[0] for C in Cs])
++    i = int(np.argmax(prof))
++    _, cog, tes, _, _ = dispatch(Cs[i], min_load=0.25, mandate_mwe=mandate)
++    print(f"{mandate:>12}{cog:>11.0f}%{Cs[i]*ETA:>15.0f}{tes:>12.0f}{prof[i]:>14.0f}")
++
++# ---- figure -----------------------------------------------------------------
++fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 5))
++for lab, prof in p1.items():
++    a1.plot([dispatch(C)[1] for C in Cs], prof, lw=2.4, label=lab)
++a1.set_xlabel("% cogen (firm heat share)"); a1.set_ylabel("annual profit [$M/yr]")
++a1.invert_xaxis()
++a1.set_title("P1: does upsizing the turbine pay?\nconstant Mh=$30, Me duck curve",
++             fontweight="bold", fontsize=11)
++a1.legend(fontsize=8); a1.grid(alpha=0.3)
++
++mand = np.linspace(0, 600, 40)
++opt_cog, opt_prof = [], []
++for mm in mand:
++    prof = np.array([dispatch(C, min_load=0.25, mandate_mwe=mm)[0] for C in Cs])
++    i = int(np.argmax(prof))
++    opt_cog.append(dispatch(Cs[i], min_load=0.25, mandate_mwe=mm)[1])
++    opt_prof.append(prof[i])
++a2.plot(mand, opt_cog, lw=2.6, color="#2f9e63")
++a2.set_xlabel("mandated net electricity [MW_e avg]")
++a2.set_ylabel("optimal % cogen", color="#2f9e63")
++a2.set_title("P2: optimal % cogen vs a net-power mandate\n(steam min-load 25%, TES sized to firm heat)",
++             fontweight="bold", fontsize=11)
++a2.grid(alpha=0.3)
++fig.tight_layout()
++OUT = r"C:\Users\mallo\Deterministic_Concept_scoring\heat_peaking_v2.png"
++fig.savefig(OUT, dpi=140); print("\nsaved:", OUT)
+diff --git a/revenue_offset_sensitivity.py b/revenue_offset_sensitivity.py
+new file mode 100644
+index 0000000..f4bfbcb
+--- /dev/null
++++ b/revenue_offset_sensitivity.py
+@@ -0,0 +1,111 @@
++"""Step 5: key-sensitivity study for D-T tokamak alternate revenue streams.
++
++Sweeps the make-or-break parameters for each offset and writes a summary
++figure + prints a findings table.  Uses the revenue_offsets overlay on a
++1 GWe D-T tokamak baseline.
++"""
++
++import numpy as np
++import matplotlib.pyplot as plt
++
++from costingfe import CostModel, ConfinementConcept, Fuel
++from costingfe.revenue_offsets import OffsetParams, apply_offsets
++
++GK = dict(concept=ConfinementConcept.TOKAMAK, fuel=Fuel.DT, availability=0.85)
++
++m = CostModel(ConfinementConcept.TOKAMAK, Fuel.DT)
++R = m.forward(net_electric_mw=1000.0, availability=0.85, lifetime_yr=30.0,
++              size_from_power=True)
++BASE = float(R.costs.lcoe)
++
++
++def net(**kw):
++    return apply_offsets(R, OffsetParams(**kw), **GK).net_lcoe
++
++
++# ---------------------------------------------------------------- sensitivities
++au_price = np.linspace(40_000, 160_000, 25)
++au_net = [net(gold_on=True, gold_price_usd_per_kg=p) for p in au_price]
++
++au_rate = np.linspace(400, 1600, 25)  # kg/GWth/yr span (Marathon basis)
++au_rate_net = [net(gold_on=True, gold_kg_per_gwth_yr=k) for k in au_rate]
++
++mh_me = np.linspace(0.1, 3.0, 30)
++heat_net = [net(heat_on=True, heat_frac=0.8, heat_price_ratio=r) for r in mh_me]
++heat_net_50 = [net(heat_on=True, heat_frac=0.5, heat_price_ratio=r) for r in mh_me]
++ETA_GEN = OffsetParams().eta_gen
++
++# H2 diverts a PARTIAL slice (0.5) so net LCOE on the remaining electricity is
++# defined; a 100%-H2 plant is an LCOH question, not an LCOE one.
++h2_price = np.linspace(1.0, 9.0, 30)
++h2_net = [net(h2_on=True, h2_frac=0.5, h2_price_usd_per_kg=p) for p in h2_price]
++h2_net_hte = [net(h2_on=True, h2_frac=0.5, h2_price_usd_per_kg=p, h2_conv_eff=0.85)
++              for p in h2_price]
++
++# gold credit is a nearly flat $/MWh reduction -> report it
++gold_credit = BASE - net(gold_on=True)
++
++# ---------------------------------------------------------------- figure
++plt.rcParams.update({"font.size": 10, "axes.grid": True, "grid.alpha": 0.3})
++fig, ax = plt.subplots(2, 2, figsize=(11, 8))
++fig.suptitle("Alternate-revenue sensitivities for a 1 GWe D-T tokamak "
++             f"(base LCOE = ${BASE:.0f}/MWh)", fontsize=13, fontweight="bold")
++
++# (a) gold price
++a = ax[0, 0]
++a.plot(au_price / 1e3, au_net, color="#c9a227", lw=2.5)
++a.axhline(BASE, ls="--", c="gray", label="base (elec only)")
++a.axhline(0, ls=":", c="k", lw=0.8)
++a.axvline(100, ls=":", c="#c9a227", label="~current $100k/kg")
++a.set_xlabel("gold price [$k/kg]"); a.set_ylabel("net LCOE [$/MWh]")
++a.set_title("(a) Gold — the dominant, additive lever"); a.legend(fontsize=8)
++
++# (b) gold production rate
++b = ax[0, 1]
++b.plot(au_rate / 1e3, au_rate_net, color="#c9a227", lw=2.5)
++b.axhline(BASE, ls="--", c="gray")
++b.axvline(2.0, ls=":", c="#c9a227", label="~2 t/GWfus central")
++b.set_xlabel("gold production [t / GW$_{fus}$ / yr]"); b.set_ylabel("net LCOE [$/MWh]")
++b.set_title("(b) Gold rate (TBR-driven: 0.73–3.1 t)"); b.legend(fontsize=8)
++
++# (c) heat crossover
++c = ax[1, 0]
++c.plot(mh_me, heat_net, lw=2.5, color="#c1440e", label="80% heat")
++c.plot(mh_me, heat_net_50, lw=2.0, color="#e07a5f", ls="--", label="50% cogen")
++c.axhline(BASE, ls="--", c="gray")
++c.axvline(ETA_GEN, ls=":", c="#c1440e", label=f"crossover Mh/Me=η_gen={ETA_GEN}")
++c.set_ylim(-250, 250)
++c.set_xlabel("heat/elec price ratio  Mh/Me"); c.set_ylabel("net LCOE [$/MWh]")
++c.set_title("(c) Heat — wins only above Mh/Me = η_gen"); c.legend(fontsize=8)
++
++# (d) H2 crossover
++d = ax[1, 1]
++d.plot(h2_price, h2_net, lw=2.5, color="#1b998b", label="LTE η=0.70")
++d.plot(h2_price, h2_net_hte, lw=2.0, color="#3a7ca5", ls="--", label="HTE η=0.85")
++d.axhline(BASE, ls="--", c="gray", label="base (elec only)")
++d.set_xlabel("hydrogen price [$/kg]"); d.set_ylabel("net LCOE [$/MWh]")
++d.set_title("(d) H₂ — beats elec only at high price"); d.legend(fontsize=8)
++
++fig.tight_layout(rect=[0, 0, 1, 0.96])
++OUT = r"C:\Users\mallo\Deterministic_Concept_scoring\revenue_offset_sensitivity.png"
++fig.savefig(OUT, dpi=140)
++print("saved:", OUT)
++
++# ---------------------------------------------------------------- findings
++def bre_h2(conv):
++    series = h2_net if conv == 0.70 else h2_net_hte
++    for p, n_lte in zip(h2_price, series):
++        if n_lte == n_lte and n_lte < BASE:  # skip NaN
++            return f"{p:.1f}"
++    return ">9.0"
++
++print(f"\nBASE LCOE (elec only)            {BASE:8.1f} $/MWh")
++print(f"Gold credit @ $100k/kg           {gold_credit:8.1f} $/MWh  (flat, additive)")
++print(f"  -> net LCOE with gold          {net(gold_on=True):8.1f} $/MWh")
++print(f"Gold @ $60k/kg  net LCOE         {net(gold_on=True, gold_price_usd_per_kg=60000):8.1f} $/MWh")
++print(f"Gold @ 0.5 t/GWth (low) net      {net(gold_on=True, gold_kg_per_gwth_yr=500):8.1f} $/MWh")
++print(f"Heat crossover Mh/Me             {ETA_GEN:8.2f}  (below this, electricity wins)")
++print(f"H2 breakeven price (LTE 0.70)    {bre_h2(0.70):>8s} $/kg  (50% divert)")
++print(f"H2 breakeven price (HTE 0.85)    {bre_h2(0.85):>8s} $/kg  (50% divert)")
++print(f"Full stack (gold+heat1.5+h2$5)   "
++      f"{net(gold_on=True, heat_on=True, heat_frac=0.3, heat_price_ratio=1.5, h2_on=True, h2_frac=0.2, h2_price_usd_per_kg=5.0):8.1f} $/MWh")
+diff --git a/revenue_stream_itemization.py b/revenue_stream_itemization.py
+new file mode 100644
+index 0000000..d629d52
+--- /dev/null
++++ b/revenue_stream_itemization.py
+@@ -0,0 +1,156 @@
++"""Itemized cost/revenue comparison of each alternate revenue stream, benchmarked
++against a 1 GWe D-T tokamak baseline. Prints per-stream ledgers + a figure.
++
++Heat is shown two ways:
++  * Heat BEST      -- recreates the interactive tool's ~1 c/kWh heat-led point:
++                      a smaller reactor (full-electric net 500 MWe) diverting 80%
++                      of output -> ~1 GWth firm heat + ~100 MWe electricity
++                      byproduct, high-grade heat @ $78/MWh_th + $150/kW-yr cap.
++  * Heat (Realistic) -- SAME P_fus as the 1 GWe baseline, a realistic 200 MWth
++                      high-grade heat contract @ $40/MWh_th, no TES / capacity.
++"""
++
++import numpy as np
++import matplotlib.pyplot as plt
++
++from costingfe import CostModel, ConfinementConcept, Fuel
++from costingfe.revenue_offsets import OffsetParams, apply_offsets
++
++GK = dict(concept=ConfinementConcept.TOKAMAK, fuel=Fuel.DT, availability=0.85)
++m = CostModel(ConfinementConcept.TOKAMAK, Fuel.DT)
++
++# Baseline 1 GWe plant -- reference LCOE line + P_fus anchor for the realistic case
++Rb = m.forward(net_electric_mw=1000.0, availability=0.85, lifetime_yr=30.0,
++               size_from_power=True)
++BASE = float(Rb.costs.lcoe)
++PN_BASE = float(Rb.power_table.p_net)  # MWe
++
++# Heat-led "best" plant: full-electric net 500 MWe, then divert 80% of output ->
++# 1 GWth heat + 100 MWe electricity byproduct (matches the tool's best case).
++Rbest = m.forward(net_electric_mw=500.0, availability=0.85, lifetime_yr=30.0,
++                  size_from_power=True)
++
++HF_200 = 200.0 * 0.40 / PN_BASE          # heat_frac that diverts exactly 200 MWth
++NET_REAL = PN_BASE * (1.0 - HF_200)      # resulting net electric of the realistic case
++
++# (name, ForwardResult, OffsetParams)
++CASES = [
++    ("Baseline (Electricity only)", Rb, OffsetParams()),
++    ("Electricity + Gold", Rb,
++        OffsetParams(gold_on=True)),  # cooldown 10 yr @ 3% (defaults)
++    ("Electricity + Heat (Power-led)", Rb, OffsetParams(
++        heat_on=True, heat_frac=HF_200, heat_price_usd_per_mwhth=50.0,
++        heat_storage_hours=0.0, capacity_price_usd_per_kw_yr=0.0)),
++    # capacity tuned to $139/kW-yr so the heat-led point lands exactly on 1 c/kWh
++    ("Electricity + Heat (Heat-led)", Rbest, OffsetParams(
++        heat_on=True, heat_frac=0.8, heat_price_usd_per_mwhth=78.0,
++        heat_storage_hours=4.0, capacity_price_usd_per_kw_yr=139.0,
++        upsized_turbine=True)),
++    ("Electricity + H2 (Power-led)", Rb, OffsetParams(
++        h2_on=True, h2_frac=0.10, h2_cf_recovery_frac=0.0118,
++        h2_electrolyzer_mw=200.0, h2_price_usd_per_kg=4.0)),
++    ("Electricity + H2 (H2-led)", Rb, OffsetParams(
++        h2_on=True, h2_frac=0.90, h2_cf_recovery_frac=0.053,
++        h2_electrolyzer_mw=900.0, h2_price_usd_per_kg=4.0)),
++]
++
++
++def ledger(name, R, off):
++    c = R.costs
++    o = apply_offsets(R, off, **GK)
++    base_cost = float(c.cas90 + c.cas70 + c.cas80)
++    print(f"\n{'='*66}\n{name}\n{'='*66}")
++    print(f"  base plant cost        {base_cost:8.1f} M$/yr")
++    for it in o.items:
++        if it["kind"] == "memo":
++            continue
++        sign = "+" if it["kind"] == "revenue" else "-"
++        print(f"  {it['kind']:8s} {it['label']:40s} {sign}{abs(it['musd_yr']):7.1f}")
++    print(f"  electricity sold       {o.energy_sold_mwh/1e6:8.3f} TWh")
++    for n in o.notes:
++        print(f"  - {n}")
++    print(f"  EFFECTIVE LCOE {o.net_lcoe:8.1f} $/MWh   (D {o.net_lcoe-BASE:+.1f})")
++    return o.net_lcoe
++
++
++results = [(name, ledger(name, R, off)) for name, R, off in CASES]
++labels = [r[0] for r in results]
++vals = [r[1] for r in results]
++LCOE_REAL = vals[3]
++
++# ------------------------------------------------------------------ figure
++colors = ["#6c757d", "#c9a227", "#2f9e63", "#c1440e", "#1b998b", "#5f4b8b"]
++fig, ax = plt.subplots(figsize=(10, 5.4))
++CAP = 160.0  # x cap; the H2-led bar ($612) is off-scale -> clipped + flagged
++bars = ax.barh(range(len(labels)), [min(v, CAP) for v in vals], color=colors)
++for _b, _v in zip(bars, vals):
++    if _v > CAP:
++        _b.set_hatch("////")
++        _b.set_edgecolor("white")
++ax.axvline(BASE, ls="--", c="gray", lw=1, label=f"base {BASE:.0f} $/MWh")
++ax.axvline(0, ls=":", c="k", lw=0.8)
++ax.set_yticks(range(len(labels)))
++ax.set_yticklabels(labels)
++ax.invert_yaxis()
++
++# smaller-font exact-conditions note under the two heat bars
++_tr = ax.get_yaxis_transform()
++_detail = {
++    1: ("1 t/GW_th/yr, 100 t Hg-198/GW_th · 14-yr cooldown discounted @3% (−34%)\n"
++        "Hg-198 enrichment-plant CAPEX excluded · gold sold at \\$100k/kg"),
++    2: (f"same P_fus as 1 GWe baseline (net {NET_REAL:.0f} MWe)\n"
++        f"200 MW_th heat @ \\$50/MWh_th · no TES / capacity revenue"),
++    3: ("≈1 GW_th firm heat @ \\$78/MWh_th (high-grade)\n"
++        "+ \\$139/kW-yr capacity · ~100 MWe byproduct → 1¢/kWh\n"
++        "(OPTIMISTIC)"),
++    4: ("200 MWe @ 100 MW baseload electrolyzer, throttling to full\n"
++        "during 5%-of-yr curtailment (1.2% recovered) · H2 sells @ \\$4/kg"),
++    5: ("900 MWe baseload electrolyzer → ~136 kt/yr H2. \\$4/kg H2 sell price\n"
++        "<< ~\\$7/kg delivered → electricity LCOE blows out"),
++}
++for _i, _t in _detail.items():
++    ax.text(-0.008, _i + 0.26, _t, transform=_tr, ha="right", va="top",
++            fontsize=6.3, color="dimgray", linespacing=1.15)
++
++ax.set_xlabel("effective LCOE [$/MWh]")
++ax.set_title("Effective LCOE of a 1 GWe D-T tokamak by revenue stream",
++             fontweight="bold")
++for i, v in enumerate(vals):
++    if v > CAP:
++        ax.text(CAP - 3, i, f"{v:.0f} ▶  off-scale", va="center", ha="right",
++                fontsize=9, color="white", fontweight="bold")
++    else:
++        ax.text(v + (3 if v >= 0 else -3), i, f"{v:.0f}",
++                va="center", ha="left" if v >= 0 else "right", fontsize=9)
++ax.set_xlim(0, CAP)
++ax.legend()
++fig.tight_layout()
++fig.subplots_adjust(left=0.35)  # keep the left margin wide enough for the sub-notes
++OUT = r"C:\Users\mallo\Deterministic_Concept_scoring\revenue_stream_comparison.png"
++fig.savefig(OUT, dpi=140)
++print("\nsaved:", OUT)
++
++# ---------------------------------------------- % cogen optimization figure
++fr = np.linspace(0.05, 0.85, 30)
++best = [apply_offsets(Rb, OffsetParams(heat_on=True, heat_mode="cogen",
++        heat_frac=f, heat_price_ratio=1.0), **GK).net_lcoe for f in fr]
++worst = [apply_offsets(Rb, OffsetParams(heat_on=True, heat_mode="cogen",
++        heat_frac=f, heat_price_ratio=0.35), **GK).net_lcoe for f in fr]
++fig2, ax2 = plt.subplots(figsize=(9, 5.2))
++ax2.plot(fr * 100, best, lw=2.6, color="#2f9e63",
++         label="BEST - high-grade cogen (Mh/Me=1.0)")
++ax2.plot(fr * 100, worst, lw=2.6, color="#c1440e",
++         label="WORST - low-grade cogen (Mh/Me=0.35)")
++ax2.axhline(BASE, ls="--", c="gray", lw=1, label=f"base electricity {BASE:.0f} $/MWh")
++ax2.axhline(0, ls=":", c="k", lw=0.8)
++ax2.set_xlabel("% of output diverted to heat  (cogen fraction)")
++ax2.set_ylabel("effective LCOE [$/MWh]")
++ax2.set_title("Re-optimizing % cogen - heat taken upstream of the turbine\n"
++              "(monotonic -> corner solutions, not an interior optimum)",
++              fontweight="bold", fontsize=11)
++ax2.legend(fontsize=8.5, loc="center left")
++ax2.grid(alpha=0.3)
++fig2.tight_layout()
++OUT2 = r"C:\Users\mallo\Deterministic_Concept_scoring\revenue_heat_cogen_optimization.png"
++fig2.savefig(OUT2, dpi=140)
++print("saved:", OUT2)
+diff --git a/rigid_vs_flexible_v2.py b/rigid_vs_flexible_v2.py
+new file mode 100644
+index 0000000..a5fab02
+--- /dev/null
++++ b/rigid_vs_flexible_v2.py
+@@ -0,0 +1,62 @@
++"""Rigid 50/50 (A) vs flexible (B), but SIZE B's TES to the peak window.
++B keeps the 50/50 baseline, then shifts 500 MW_e out of the N cheapest hours
++into the N most expensive hours (heat->0 at peak, covered by TES; heat->max
++off-peak, recharging TES). TES = 1250 MW_th * N hours. Sweep N for max NPV.
++"""
++import numpy as np
++
++MULT = np.array([0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
++                 0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88])
++MULT = MULT / MULT.mean()
++ME = 60.0; PRICE = MULT * ME; MH = 30.0
++Q = 2500.0; ETA = 0.40; AVAIL = 0.85; CRF = 0.0806; ANN = 12.409
++BASE_CAP = 8614.0 - 258.0; OM = 127.0; FUEL = 0.8
++TURB = 258.0; TESK = 30.0; BOP = 200.0
++H = 0.5 * Q; HRS = 365.0 * AVAIL
++psort = np.sort(PRICE)                       # ascending
++heat_rev = H * MH * 8760.0 * AVAIL / 1e6
++
++def profit(elec_rev, tes_mwhth, turb_mwe):
++    cap = (BASE_CAP + TURB*turb_mwe*1e3/1e6 + TESK*tes_mwhth*1e3/1e6 + BOP*H*1e3/1e6)
++    return elec_rev + heat_rev - (CRF*cap + OM + FUEL), cap
++
++# A: rigid 500 MW_e flat, no TES
++elec_A = 500.0 * PRICE.sum() * HRS / 1e6
++pA, cA = profit(elec_A, 0.0, 500.0)
++
++# B(N): shift 500 MW_e from N cheapest to N priciest hours; TES = 1250*N MWh_th
++print("Sizing B's TES window (each shifted hour needs 1250 MWh_th of TES):")
++print(f"{'N (h)':>6}{'TES MWh_th':>12}{'peak used $/MWh':>17}{'B profit $M/yr':>16}{'B-A NPV $B':>12}")
++bestN, bestP = 0, -1e9
++for N in range(1, 13):
++    top = psort[-N:]; bot = psort[:N]
++    uplift = 500.0 * (top.sum() - bot.sum()) * HRS / 1e6   # revenue shifted
++    elec_B = elec_A + uplift
++    tes = H * N
++    pB, cB = profit(elec_B, tes, 1000.0)
++    dnpv = (pB - pA) * ANN / 1e3
++    mark = ""
++    if pB > bestP: bestP, bestN = pB, N;
++    print(f"{N:>6}{tes:>12,.0f}{top.mean():>17.0f}{pB:>16.0f}{dnpv:>12.2f}")
++
++# optimum
++top = psort[-bestN:]; bot = psort[:bestN]
++uplift = 500.0 * (top.sum() - bot.sum()) * HRS / 1e6
++pB, cB = profit(elec_A + uplift, H*bestN, 1000.0)
++print(f"\nA  rigid 50/50: NPV ${pA*ANN/1e3:.2f}B (turbine 500 MW_e, no TES, cap ${cA:,.0f}M)")
++print(f"B* optimal:     NPV ${pB*ANN/1e3:.2f}B at N={bestN} h TES ({H*bestN:,.0f} MWh_th), "
++      f"turbine 1000 MW_e, cap ${cB:,.0f}M")
++print(f"B* - A:         {(pB-pA):+.0f} $M/yr -> {(pB-pA)*ANN/1e3:+.2f} $B NPV")
++print(f"  (vs the naive 12 h-TES B which was only +0.17 $B)")
++
++print("\nB*-A NPV vs volatility (peak height), TES re-optimized each time:")
++for vol in [1.0, 1.5, 2.0, 3.0]:
++    pr = np.sort(ME + (PRICE - ME) * vol)
++    ea = 500.0 * pr.sum() * HRS / 1e6
++    best = -1e9; bn = 0
++    for N in range(1, 13):
++        up = 500.0 * (pr[-N:].sum() - pr[:N].sum()) * HRS / 1e6
++        pb, cb = profit(ea + up, H*N, 1000.0)
++        pa2, _ = profit(ea, 0.0, 500.0)
++        if pb-pa2 > best: best, bn = pb-pa2, N
++    print(f"   vol x{vol}: peak ${pr.max():.0f} -> best N={bn}h, B-A NPV {best*ANN/1e3:+.2f} $B")
+diff --git a/src/costingfe/revenue_offsets.py b/src/costingfe/revenue_offsets.py
+new file mode 100644
+index 0000000..0326863
+--- /dev/null
++++ b/src/costingfe/revenue_offsets.py
+@@ -0,0 +1,472 @@
++"""Alternate-revenue overlay for D-T tokamak fusion power plants.
++
++Non-invasive TEA layer that consumes a `ForwardResult` from the core costing
++model and applies *toggleable* co-product revenue streams, returning a net LCOE.
++It never mutates the core model; it reads the cost breakdown + power table and
++computes an offset LCOE on top.
++
++Streams (each independently ON/OFF), grounded in:
++  - Gold  : Rutkowski, Harter & Parisi (2025), Scalable Chrysopoeia via (n,2n).
++            198Hg(n,2n)197Hg -> 197Au in the blanket multiplier layer. ADDITIVE:
++            the (n,2n) is required for TBR anyway, so gold does not divert output.
++  - Heat  : Ward, Majeed & Lopes Cardozo (2025), Fusion for high-value heat.
++            SUBSTITUTIVE: sells thermal output as heat instead of converting to
++            electricity; only wins when Mh/Me > eta_gen.
++  - H2    : Handley, Slesinski & Hsu (2021), Potential Early Markets for Fusion.
++            DERIVATIVE: converts electricity (or heat) to hydrogen; only wins
++            when the H2 value beats the displaced electricity.
++
++Accounting convention (Parisi & Schiller 2026, eq. 12 -- byproduct credit):
++
++    LCOE_net = [ (CAS90 + CAS70 + CAS80)               # base plant annual cost
++               + dCAPEX * CRF + dOM                     # incremental offset costs
++               - R_gold - R_heat - R_h2 ]               # co-product revenue
++               * 1e6 / (8760 * P_elec_sold * avail)
++
++Gold is a pure credit (P_elec_sold unchanged).  Heat and H2 divert output, so
++they reduce P_elec_sold; they only lower LCOE when the product revenue exceeds
++the electricity revenue they displaced (valued at the base breakeven LCOE).
++
++GATING: offsets apply ONLY to a D-T tokamak (concept == TOKAMAK, fuel == DT).
++For any other concept/fuel the overlay returns the base LCOE unchanged and flags
++`gated_off = True`.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field, replace
++
++from costingfe.layers.economics import compute_crf
++from costingfe.types import ConfinementConcept, Fuel
++
++# --- Physical constants -----------------------------------------------------
++HHV_H2_KWH_PER_KG = 39.4  # higher heating value of hydrogen [kWh/kg]
++
++
++@dataclass
++class OffsetParams:
++    """All alternate-revenue parameters and their ON/OFF toggles.
++
++    Defaults are the central estimates from the source papers; ranges for the
++    sensitivity study are documented inline.
++    """
++
++    # --- toggles ---
++    gold_on: bool = False
++    heat_on: bool = False
++    h2_on: bool = False
++
++    # --- shared economics (should mirror the forward() call) ---
++    interest_rate: float = 0.07
++    lifetime_yr: float = 30.0
++    neutron_multiplier: float = 1.1  # Mn: fusion power -> blanket thermal power
++
++    # --- GOLD (additive) ---
++    # Production: Marathon design point ~1 t/GW_th/yr (nameplate; scaled by
++    # availability below). Keyed to THERMAL power (GW_th), the basis Marathon
++    # quotes, not fusion power.
++    gold_kg_per_gwth_yr: float = 1000.0
++    gold_price_usd_per_kg: float = 100_000.0  # ~current LBMA; sensitivity to supply
++    # Radioactivity cooldown: transmuted gold needs ~10 yr to decay below sale
++    # limits. Radiation-placarded metal is non-fungible, so it cannot clear as
++    # loco-London / LBMA Good Delivery bullion until cooled. But it is a stable,
++    # physically-backed, near-certain future asset (price assumed hedged forward),
++    # so the delay is discounted at a low ~risk-free rate, NOT the plant equity
++    # WACC. 3% / 10 yr -> factor 1/1.03^10 = 0.744 (~26% haircut).
++    gold_cooldown_years: float = 14.0
++    gold_cooldown_rate: float = 0.03
++    # 198Hg inventory: Marathon design point ~100 t/GW_th.
++    hg_inventory_t_per_gwth: float = 100.0
++    hg_inventory_usd_per_kg: float = 30.0  # NATURAL mercury commodity price ($/kg)
++    hg_198_abundance: float = 0.0997  # natural fractional abundance of 198Hg
++    # -> raw Hg charged on ~1/0.0997 ~= 10x the enriched inventory (feedstock to
++    # enrich; depleted tails NOT credited back -- conservative per design intent)
++    # Photochemical enrichment OPERATING cost ~$2.4/kg-198Hg product (Rutkowski,
++    # Harter & Parisi 2025, single-step photo-enrichment to 99.2% @ $0.1/kWh).
++    # NOTE: this is the ENERGY/operating cost only. The enrichment-PLANT CAPITAL
++    # is NOT included here -- Marathon defers it as "preliminary... requiring
++    # further development", and it is the dominant unquantified swing in the gold
++    # economics (a centrifuge cascade for ~2800 t nat-Hg/yr could be ~$1-5B).
++    gold_sep_usd_per_kg_hg: float = 2.4
++    hg_burnup_frac_yr: float = 0.007  # 0.3-1.2%/yr consumed -> makeup enrichment
++    gold_extraction_capex_musd: float = 50.0  # Cu/Ta getter + processing loop
++    gold_extraction_om_frac: float = 0.05  # /yr of extraction capex
++    # Transmutation-blanket complexity markup, applied to the FW/blanket account
++    # (C220101). Central 10%: the mercury (n,2n) multiplier-breeder replaces a
++    # conventional Be/Pb multiplier (Hg is cheap as a material) but adds real
++    # premium for in-blanket liquid-mercury containment + circulation, Hg
++    # corrosion/amalgamation mitigation of structural steel, the online
++    # gold/Hg extraction interface, and activated-Hg (197/203) shielding &
++    # remote handling. Bounded below by "mercury material is cheap" and above by
++    # the ~1.5-2x FOAK premium seen for complex liquid-metal blankets. No costed
++    # mercury-blanket exists (2025 concept) -> engineering estimate; tune here.
++    # (This markup is a ~$1/MWh lever end-to-end; 30% -> 10% -> 0% spans only
++    # +1.6 -> +0.5 -> 0 $/MWh, so it is not a driver of the gold economics.)
++    blanket_complexity_frac: float = 0.10
++    gold_regulatory_om_musd: float = 3.0  # Minamata/handling compliance, M$/yr
++
++    # --- HEAT (substitutive) ---
++    # mode: "cogen"     = thermal bypass, sell own heat instead of electricity
++    #                     (low-grade; 1/eta_gen leverage; earns turbine credit)
++    #       "heat_pump" = divert electricity to a grid-scale heat pump, amplify
++    #                     by COP into HIGH-GRADE heat sold at a premium ratio
++    heat_mode: str = "cogen"
++    heat_frac: float = 1.0  # fraction of output (cogen) or electricity (HP) to heat [0-1]
++    heat_price_ratio: float = 1.0  # Mh/Me (heat price / base electricity price)
++    eta_gen: float = 0.40  # thermal->electric conversion efficiency
++    # grid-scale heat pump (heat_mode="heat_pump"):
++    hp_cop: float = 2.5  # coeff. of performance for the high-temp lift (2-4)
++    hp_capex_usd_per_kwth: float = 800.0  # $/kW_th of high-grade heat output (500-1500)
++    hp_om_frac: float = 0.04  # /yr of heat-pump capital
++    # capital effects of cogeneration:
++    # (+) cogen sizes the power block only for the electricity it still makes,
++    #     so it saves heat_frac of the turbine (CAS23) + heat-rejection (CAS26).
++    heat_avoided_turbine_frac: float = 1.0  # 0-1 of the pro-rata CAS23+CAS26 credit
++    # (-) high-temp heat export: HX + insulated HT piping + offtaker tie-in
++    heat_export_capex_usd_per_kwth: float = 200.0  # $/kW_th of diverted heat
++    heat_export_om_frac: float = 0.03  # /yr of heat-export+storage capital
++    # (-) integrated thermal storage (firm heat / buffer; Handley 2021).
++    # ON by default: firm high-temp heat delivery essentially requires it.
++    heat_storage_hours: float = 4.0  # hours of thermal storage (0 = none)
++    heat_storage_capex_usd_per_kwhth: float = 30.0  # $/kWh_th (molten-salt class)
++
++    # --- H2 / synfuels (derivative) ---
++    # Two H2 energy sources: (1) baseload diversion of SALEABLE electricity
++    # (h2_frac; opportunity cost = grid price) and (2) recovered curtailment
++    # (h2_cf_recovery_frac; ~free feedstock -- energy a grid-only plant wastes).
++    # CAPEX/OPEX/efficiency/logistics aligned to the interactive H2-led tool.
++    h2_frac: float = 1.0  # baseload diversion of saleable electricity [0-1]
++    h2_cf_recovery_frac: float = 0.0  # curtailment recovered -> H2 (free feedstock)
++    h2_price_usd_per_kg: float = 4.0  # $1-2 green target, up to $6 high-value
++    h2_conv_eff: float = 0.758  # HHV basis -> 52 kWh/kg (tool's alkaline electrolyzer)
++    h2_electrolyzer_capex_usd_per_kw: float = 700.0  # tool-aligned ($300-1000/kW range)
++    h2_om_frac: float = 0.03  # /yr of electrolyzer capex (tool-aligned)
++    h2_logistics_usd_per_kg: float = 0.80  # compression + buffer + local pipeline
++    h2_electrolyzer_mw: "float | None" = None  # explicit nameplate; else auto-size
++
++    # --- CAPACITY MARKET (firm dispatchable capacity; optional) ---
++    capacity_price_usd_per_kw_yr: float = 0.0  # 0 = no capacity market
++    upsized_turbine: bool = False  # keep the full turbine so a TES-firmed plant can
++    # throttle to full net electric at peak (no cogen downsizing) -> qualifies the
++    # full net capacity for the capacity market (mirrors the interactive tool)
++    # --- explicit prices (optional; override the ratio-based defaults) ---
++    heat_price_usd_per_mwhth: "float | None" = None  # explicit Mh; overrides ratio
++    elec_price_usd_per_mwh: "float | None" = None  # explicit Me (display/memo; LCOE unaffected)
++
++
++@dataclass
++class OffsetResult:
++    base_lcoe: float
++    net_lcoe: float
++    gated_off: bool
++    p_elec_sold_mw: float
++    # annual figures, M$/yr
++    base_annual_cost: float
++    energy_sold_mwh: float = 0.0
++    gold_revenue: float = 0.0
++    gold_cost: float = 0.0
++    heat_revenue: float = 0.0
++    heat_elec_displaced_value: float = 0.0
++    capacity_revenue: float = 0.0
++    h2_revenue: float = 0.0
++    h2_cost: float = 0.0
++    notes: list[str] = field(default_factory=list)
++    # granular line items: dicts {stream, label, kind, musd_yr}
++    # kind in {"revenue", "cost"}; capital already annualized (x CRF)
++    items: list = field(default_factory=list)
++
++
++def _fw_blanket_share(cas22_detail) -> float:
++    """First-wall + breeding-blanket account (C220101), the base for the gold
++    transmutation-blanket complexity markup.
++
++    The mercury/(n,2n) multiplier-breeder layer (Rutkowski, Harter & Parisi
++    2025, arXiv:2507.13461: an enriched-198Hg inner layer alloyed with Li-6)
++    is a modification of THIS account -- the FW/blanket -- NOT of the whole
++    reactor plant equipment (magnets, current drive, etc.).  Exposed as a
++    sensitivity via blanket_complexity_frac.
++    """
++    return float(cas22_detail.get("C220101", 0.0))
++
++
++def apply_offsets(
++    result,
++    offset: OffsetParams,
++    *,
++    concept: ConfinementConcept,
++    fuel: Fuel,
++    availability: float,
++    n_mod: float = 1.0,
++) -> OffsetResult:
++    """Layer toggleable co-product revenue offsets onto a ForwardResult.
++
++    Returns an OffsetResult with the net LCOE and a full revenue/cost breakdown.
++    Offsets are forced off (gated_off=True) unless concept==TOKAMAK & fuel==DT.
++    """
++    costs = result.costs
++    pt = result.power_table
++    base_lcoe = float(costs.lcoe)  # $/MWh, also serves as reference Me
++    p_net = float(pt.p_net) * n_mod  # MWe
++    p_fus = float(pt.p_fus) * n_mod  # MW fusion
++    base_annual_cost = float(costs.cas90 + costs.cas70 + costs.cas80)  # M$/yr
++
++    gated = not (concept == ConfinementConcept.TOKAMAK and fuel == Fuel.DT)
++    if gated:
++        return OffsetResult(
++            base_lcoe=base_lcoe,
++            net_lcoe=base_lcoe,
++            gated_off=True,
++            p_elec_sold_mw=p_net,
++            base_annual_cost=base_annual_cost,
++            notes=["Offsets apply only to D-T tokamak; returned base LCOE."],
++        )
++
++    crf = compute_crf(offset.interest_rate, offset.lifetime_yr)
++    p_gwfus = p_fus / 1000.0  # GW fusion
++    p_gwth = float(pt.p_th) * n_mod / 1000.0  # GW thermal (gold/Hg basis)
++    # Anchor to the model's OWN energy denominator (captures its effective
++    # availability), so base-all-off reproduces costs.lcoe exactly and every
++    # diverted-output slice stays consistent with the core model.
++    annual_energy_base_mwh = base_annual_cost * 1e6 / base_lcoe
++
++    d_capex = 0.0  # M$ incremental capital
++    d_om = 0.0  # M$/yr incremental O&M
++    revenue = 0.0  # M$/yr co-product credit
++    p_elec_sold = p_net  # MWe actually sold as electricity
++    frac_sold = 1.0  # fraction of base electric energy still sold as electricity
++    notes: list[str] = []
++    items: list = []  # granular line items (annualized M$/yr)
++
++    def add(stream, label, kind, musd_yr):
++        items.append(
++            {"stream": stream, "label": label, "kind": kind, "musd_yr": musd_yr}
++        )
++
++    out = OffsetResult(
++        base_lcoe=base_lcoe,
++        net_lcoe=base_lcoe,
++        gated_off=False,
++        p_elec_sold_mw=p_net,
++        base_annual_cost=base_annual_cost,
++    )
++
++    # --- GOLD: additive credit, no output diversion --------------------------
++    if offset.gold_on:
++        au_kg_yr = (
++            offset.gold_kg_per_gwth_yr * p_gwth * availability
++        )
++        cooldown_factor = 1.0 / (
++            1.0 + offset.gold_cooldown_rate
++        ) ** offset.gold_cooldown_years
++        r_gold = (
++            au_kg_yr
++            * offset.gold_price_usd_per_kg
++            * cooldown_factor
++            / 1e6
++        )  # M$/yr, sale delayed by the activation cooldown
++        # costs
++        hg_inv_t = offset.hg_inventory_t_per_gwth * p_gwth  # enriched 198Hg
++        # Raw mercury feedstock: to hold `hg_inv_t` of enriched 198Hg you must
++        # buy ~10x that mass of natural Hg (198Hg is only ~10% of natural Hg).
++        hg_feed_t = hg_inv_t / offset.hg_198_abundance
++        hg_feed_musd = hg_feed_t * 1e3 * offset.hg_inventory_usd_per_kg / 1e6
++        hg_makeup_kg_yr = hg_inv_t * 1e3 * offset.hg_burnup_frac_yr
++        sep_om = hg_makeup_kg_yr * offset.gold_sep_usd_per_kg_hg / 1e6  # M$/yr
++        # NOTE: enrichment-PLANT CAPITAL is intentionally EXCLUDED (unquantified;
++        # see gold_sep_usd_per_kg_hg comment). Only the photochemical OPEX enters.
++        blanket_bump = (
++            _fw_blanket_share(result.cas22_detail) * offset.blanket_complexity_frac
++        )
++        gold_capex = (
++            offset.gold_extraction_capex_musd + hg_feed_musd + blanket_bump
++        )
++        gold_om = (
++            offset.gold_extraction_capex_musd * offset.gold_extraction_om_frac
++            + sep_om
++            + offset.gold_regulatory_om_musd
++        )
++        c_gold = gold_capex * crf + gold_om  # annualized M$/yr
++        d_capex += gold_capex
++        d_om += gold_om
++        revenue += r_gold
++        out.gold_revenue = r_gold
++        out.gold_cost = c_gold
++        notes.append(f"Gold: {au_kg_yr:,.0f} kg/yr")
++        notes.append("Enrichment-PLANT CAPEX excluded (unquantified; photo-OPEX only)")
++        add("gold", "Gold sales (197Au)", "revenue", r_gold)
++        add("gold", "198Hg enrichment (photochemical OPEX)", "cost", sep_om)
++        add("gold", "Mercury feedstock (natural, ~10x enriched)", "cost",
++            hg_feed_musd * crf)
++        add("gold",
++            f"Transmutation-blanket complexity ({offset.blanket_complexity_frac:.0%} of FW/blanket)",
++            "cost", blanket_bump * crf)
++        add("gold", "Au extraction loop (capital)", "cost",
++            offset.gold_extraction_capex_musd * crf)
++        add("gold", "Au extraction O&M", "cost",
++            offset.gold_extraction_capex_musd * offset.gold_extraction_om_frac)
++        add("gold", "Regulatory/Minamata O&M", "cost", offset.gold_regulatory_om_musd)
++
++    # --- HEAT: substitution, diverts output ---------------------------------
++    if offset.heat_on:
++        me = (offset.elec_price_usd_per_mwh
++              if offset.elec_price_usd_per_mwh is not None else base_lcoe)  # $/MWh
++        mh = (offset.heat_price_usd_per_mwhth
++              if offset.heat_price_usd_per_mwhth is not None
++              else offset.heat_price_ratio * me)  # $/MWh_th heat price
++        # electric energy foregone: cogen bypasses thermal; HP consumes electricity.
++        # Both reduce electricity sold by heat_frac of base output.
++        elec_displaced_mwh = annual_energy_base_mwh * offset.heat_frac
++        frac_sold -= offset.heat_frac
++        p_elec_sold -= offset.heat_frac * p_net
++        displaced_value = elec_displaced_mwh * me / 1e6  # M$/yr electricity foregone
++
++        hp_capex = 0.0
++        if offset.heat_mode == "heat_pump":
++            # divert electricity to a heat pump -> COP x high-grade heat, sold at a
++            # premium ratio. Full turbine still runs (electricity feeds the HP), so
++            # NO turbine credit. Heat pump capital sized to its heat output.
++            heat_mwh_yr = offset.hp_cop * elec_displaced_mwh
++            heat_thermal_mw = offset.hp_cop * offset.heat_frac * p_net
++            avoided_pc = 0.0
++            hp_capex = heat_thermal_mw * 1e3 * offset.hp_capex_usd_per_kwth / 1e6
++        else:  # cogen thermal bypass: keep full thermal (no eta_gen loss)
++            heat_mwh_yr = elec_displaced_mwh / offset.eta_gen
++            heat_thermal_mw = offset.heat_frac * p_net / offset.eta_gen
++            # cogen turbine sized only for retained electricity -> save heat_frac
++            # of CAS23 (turbine) + CAS26 (heat reject). But an UPSIZED turbine is
++            # kept full-size (no credit) so a TES-firmed plant can throttle to full
++            # net electric at peak and qualify the full capacity.
++            avoided_pc = (
++                0.0 if offset.upsized_turbine else
++                offset.heat_avoided_turbine_frac
++                * offset.heat_frac
++                * (float(costs.cas23) + float(costs.cas26))
++            )
++        r_heat = heat_mwh_yr * mh / 1e6  # M$/yr
++
++        # (-) high-temp heat-export BoP (HX + insulated HT piping + tie-in)
++        export_capex = (
++            heat_thermal_mw * 1e3 * offset.heat_export_capex_usd_per_kwth / 1e6
++        )
++        # (-) integrated thermal storage
++        storage_capex = (
++            offset.heat_storage_hours
++            * heat_thermal_mw
++            * 1e3
++            * offset.heat_storage_capex_usd_per_kwhth
++            / 1e6
++        )
++        heat_capex = export_capex + storage_capex + hp_capex - avoided_pc  # net M$
++        heat_om = (
++            (export_capex + storage_capex) * offset.heat_export_om_frac
++            + hp_capex * offset.hp_om_frac
++        )
++        d_capex += heat_capex
++        d_om += heat_om
++        revenue += r_heat
++        out.heat_revenue = r_heat
++        out.heat_elec_displaced_value = displaced_value
++        notes.append(
++            f"Heat[{offset.heat_mode}]: {heat_mwh_yr/1e6:,.2f} TWh_th/yr "
++            f"@ Mh/Me={offset.heat_price_ratio}"
++            + (" (beats elec)" if r_heat > displaced_value else " (LOSES vs elec)")
++        )
++        add("heat", "Heat sales", "revenue", r_heat)
++        if avoided_pc:
++            add("heat", "Avoided turbine+heat-reject (CAS23+26)", "revenue", avoided_pc * crf)
++        if hp_capex:
++            add("heat", "Grid-scale heat pump (capital)", "cost", hp_capex * crf)
++        add("heat", "HT heat-export BoP (HX+piping)", "cost", export_capex * crf)
++        if storage_capex:
++            add("heat", "Thermal storage (capital)", "cost", storage_capex * crf)
++        add("heat", "Heat/HP/storage O&M", "cost", heat_om)
++        # foregone electricity is captured by the reduced denominator, NOT summed
++        add("heat", "(electricity foregone, in denominator)", "memo", displaced_value)
++
++    # --- CAPACITY MARKET: firm dispatchable-capacity revenue ----------------
++    if offset.capacity_price_usd_per_kw_yr > 0:
++        # upsized turbine + TES lets the plant throttle to full net electric at
++        # peak (the store covers the heat); otherwise only the cogen electric
++        # output qualifies as firm capacity.
++        cap_mw = p_net if offset.upsized_turbine else p_elec_sold
++        r_cap = cap_mw * 1e3 * offset.capacity_price_usd_per_kw_yr / 1e6  # M$/yr
++        revenue += r_cap
++        out.capacity_revenue = r_cap
++        notes.append(
++            f"Capacity: {cap_mw:,.0f} MW @ "
++            f"${offset.capacity_price_usd_per_kw_yr:.0f}/kW-yr"
++        )
++        add("capacity", "Capacity market", "revenue", r_cap)
++
++    # --- H2: derivative -----------------------------------------------------
++    if offset.h2_on:
++        # (1) baseload diversion of saleable electricity (reduces grid sales)
++        elec_to_h2_mwh = annual_energy_base_mwh * frac_sold * offset.h2_frac
++        frac_sold -= frac_sold * offset.h2_frac
++        p_elec_sold -= offset.h2_frac * p_elec_sold
++        # (2) recovered curtailment: free feedstock, ADDS H2 without touching
++        #     grid sales (energy a grid-only plant would have wasted)
++        recovered_mwh = annual_energy_base_mwh * offset.h2_cf_recovery_frac
++        total_h2_mwh = elec_to_h2_mwh + recovered_mwh
++        h2_kg_yr = (
++            total_h2_mwh * 1e3 * offset.h2_conv_eff
++        ) / HHV_H2_KWH_PER_KG
++        r_h2 = h2_kg_yr * offset.h2_price_usd_per_kg / 1e6  # M$/yr
++        # electrolyzer: explicit nameplate if given, else sized to avg diverted power
++        if offset.h2_electrolyzer_mw is not None:
++            elec_capacity_kw = offset.h2_electrolyzer_mw * 1e3
++        else:
++            elec_capacity_kw = total_h2_mwh / (8760 * 0.85) * 1e3
++        h2_capex = (
++            elec_capacity_kw * offset.h2_electrolyzer_capex_usd_per_kw / 1e6
++        )  # M$
++        h2_om = h2_capex * offset.h2_om_frac
++        h2_logistics = h2_kg_yr * offset.h2_logistics_usd_per_kg / 1e6  # M$/yr
++        c_h2 = h2_capex * crf + h2_om + h2_logistics
++        d_capex += h2_capex
++        d_om += h2_om + h2_logistics
++        revenue += r_h2
++        out.h2_revenue = r_h2
++        out.h2_cost = c_h2
++        notes.append(f"H2: {h2_kg_yr/1e6:,.1f} kt/yr @ ${offset.h2_price_usd_per_kg}/kg")
++        add("h2", "Hydrogen sales", "revenue", r_h2)
++        add("h2", "Electrolyzer (capital)", "cost", h2_capex * crf)
++        add("h2", "Electrolyzer O&M", "cost", h2_om)
++        add("h2", "H2 logistics", "cost", h2_logistics)
++        if elec_to_h2_mwh > 0:
++            add("h2", "(saleable electricity foregone, in denominator)", "memo",
++                elec_to_h2_mwh * base_lcoe / 1e6)
++
++    # --- net LCOE ------------------------------------------------------------
++    net_annual_cost = base_annual_cost + d_capex * crf + d_om - revenue  # M$/yr
++    energy_sold_mwh = annual_energy_base_mwh * frac_sold
++    if energy_sold_mwh <= 1e-6:
++        notes.append(
++            "All electricity diverted; net LCOE undefined -- report product LCOX instead."
++        )
++        net_lcoe = float("nan")
++    else:
++        net_lcoe = net_annual_cost * 1e6 / energy_sold_mwh
++
++    out.p_elec_sold_mw = p_elec_sold
++    out.net_lcoe = net_lcoe
++    out.notes = notes
++    out.items = items
++    out.energy_sold_mwh = energy_sold_mwh
++    return out
++
++
++def sweep(
++    result,
++    base_offset: OffsetParams,
++    param_name: str,
++    values,
++    **gate_kwargs,
++) -> list[tuple[float, float]]:
++    """One-parameter sensitivity sweep. Returns [(value, net_lcoe), ...]."""
++    out = []
++    for v in values:
++        p = replace(base_offset, **{param_name: v})
++        r = apply_offsets(result, p, **gate_kwargs)
++        out.append((v, r.net_lcoe))
++    return out

@@ -1,0 +1,148 @@
+<meta charset="utf-8">
+<title>Gold revenue ledger — 1 GWe D-T tokamak</title>
+<style>
+  :root{
+    --bg:#f6f5f2; --panel:#ffffff; --ink:#1a1c20; --mut:#6a6f78;
+    --line:#e4e2dc; --rule:#c9c6bf; --head:#2b2e34;
+    --pos:#2f9e63; --neg:#c1440e; --gold:#b8891f; --accent:#b8891f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e0f12; --panel:#16181d; --ink:#f2f0ea; --mut:#9aa0aa;
+      --line:#262a31; --rule:#3a3f48; --head:#f2f0ea;
+      --pos:#59c98a; --neg:#e8763f; --gold:#d9b24a; --accent:#d9b24a;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f5f2; --panel:#ffffff; --ink:#1a1c20; --mut:#6a6f78;
+    --line:#e4e2dc; --rule:#c9c6bf; --head:#2b2e34;
+    --pos:#2f9e63; --neg:#c1440e; --gold:#b8891f; --accent:#b8891f;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e0f12; --panel:#16181d; --ink:#f2f0ea; --mut:#9aa0aa;
+    --line:#262a31; --rule:#3a3f48; --head:#f2f0ea;
+    --pos:#59c98a; --neg:#e8763f; --gold:#d9b24a; --accent:#d9b24a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;
+    padding:32px 20px;
+  }
+  .wrap{max-width:860px; margin:0 auto}
+  h1{
+    font-size:19px; font-weight:650; letter-spacing:-.01em; margin:0 0 3px;
+  }
+  .sub{color:var(--mut); font-size:13px; margin:0 0 20px}
+  .card{
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; overflow-x:auto;
+  }
+  table{border-collapse:collapse; width:100%; min-width:640px}
+  th,td{padding:12px 18px; text-align:left}
+  thead th{
+    font-size:13px; font-weight:650; color:var(--head);
+    border-bottom:2px solid var(--rule);
+  }
+  th.num,td.num{
+    text-align:right; font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  tbody td{border-top:1px solid var(--line); font-size:14px}
+  .lbl small{color:var(--mut); font-weight:400}
+  .pos{color:var(--pos)}
+  .neg{color:var(--neg)}
+  .gold b{color:var(--gold)}
+  tr.head-row td{font-weight:650}
+  tr.head-row .lcoe{font-weight:750; font-size:15px}
+  tr.total td{
+    border-top:2px solid var(--rule); font-weight:650;
+    background:color-mix(in srgb,var(--accent) 7%,transparent);
+  }
+  tr.total.grand td{
+    border-top:2px solid var(--rule);
+  }
+  tr.total .big{font-size:16px; font-weight:750}
+  .note{
+    color:var(--mut); font-size:12px; margin:14px 2px 0; line-height:1.55;
+    max-width:820px;
+  }
+  .note b{color:var(--ink); font-weight:600}
+</style>
+<div class="wrap">
+  <h1>Gold co-product ledger — 1 GWe D-T tokamak</h1>
+  <p class="sub">Byproduct-credit accounting · $100k/kg Au · 1 t/GW<sub>th</sub>/yr · 100 t ¹⁹⁸Hg/GW<sub>th</sub> · 14-yr cooldown @ 3% · <b style="color:var(--accent)">blanket markup 10%</b></p>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th class="lbl">line</th>
+          <th class="num">M$/yr</th>
+          <th class="num">$/MWh</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="head-row">
+          <td class="lbl">Base plant LCOE <small>(CAS90 $694.2 + CAS70 $126.9 + CAS80 $0.8)</small></td>
+          <td class="num">821.87</td>
+          <td class="num lcoe">110.536</td>
+        </tr>
+        <tr class="gold">
+          <td class="lbl">+ Gold sales, ¹⁹⁷Au <small>(2,706 kg × $100k = $270.6M gross × <b>0.661 cooldown</b> = 14 yr @ 3% → 34% haircut)</small></td>
+          <td class="num pos">+178.89</td>
+          <td class="num pos">−24.059</td>
+        </tr>
+        <tr>
+          <td class="lbl">− Transmutation-blanket complexity <small>(10% of FW/blanket, annualized)</small></td>
+          <td class="num neg">−3.99</td>
+          <td class="num neg">+0.536</td>
+        </tr>
+        <tr>
+          <td class="lbl">− Mercury feedstock <small>(3,193 t natural × $30/kg, annualized)</small></td>
+          <td class="num neg">−7.72</td>
+          <td class="num neg">+1.038</td>
+        </tr>
+        <tr>
+          <td class="lbl">− Au extraction loop <small>(capital)</small></td>
+          <td class="num neg">−4.03</td>
+          <td class="num neg">+0.542</td>
+        </tr>
+        <tr>
+          <td class="lbl">− Regulatory / Minamata O&amp;M</td>
+          <td class="num neg">−3.00</td>
+          <td class="num neg">+0.403</td>
+        </tr>
+        <tr>
+          <td class="lbl">− Au extraction O&amp;M</td>
+          <td class="num neg">−2.50</td>
+          <td class="num neg">+0.336</td>
+        </tr>
+        <tr>
+          <td class="lbl">− ¹⁹⁸Hg enrichment <small>(photochemical OPEX only)</small></td>
+          <td class="num neg">−0.01</td>
+          <td class="num neg">+0.001</td>
+        </tr>
+        <tr class="total">
+          <td class="lbl">Net gold benefit <small>(rev $178.89 − costs $21.24)</small></td>
+          <td class="num pos big">+157.65</td>
+          <td class="num pos big">−21.203</td>
+        </tr>
+        <tr class="total grand">
+          <td class="lbl">Net LCOE</td>
+          <td class="num">664.22 <small><i>(see note)</i></small></td>
+          <td class="num big">89.333</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note">
+    <b>Note on the M$/yr column.</b> The Net-LCOE annual figure (664.22) is the base plant cost (821.87)
+    minus the net gold benefit (157.65). The gold credit is the cooldown-discounted <i>levelized</i> value
+    of ¹⁹⁷Au sales, not a within-year cash flow, so the $/MWh column is the authoritative result;
+    the M$/yr column is shown for traceability of each line. Enrichment-<b>plant CAPEX is excluded</b>
+    (unquantified in the primary source); only the photochemical enrichment OPEX enters. The blanket-complexity
+    markup is a ~$1/MWh lever end-to-end (30% → 10% → 0% spans +1.6 → +0.5 → 0 $/MWh).
+  </p>
+</div>

@@ -1,0 +1,400 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Firm-heat + flexible power — cogen economics</title>
+<style>
+  :root{--ink:#1e2530;--mut:#5b6472;--line:#dce1e7;--bg:#f5f7f9;--card:#fff;
+        --blue:#2471a3;--elec:#1b6ca8;--heat:#d9822b;--green:#2f9e63;--red:#c0392b;--amber:#d69220;--cap:#7c5cc4;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14.5px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1220px;margin:0 auto;padding:22px 26px 40px;}
+  h1{font-size:22px;margin:0 0 3px;letter-spacing:-.01em;}
+  .tldr{font-size:13.5px;margin:0 0 10px;font-weight:700;color:var(--ink);}
+  .tldr b{color:var(--heat);letter-spacing:.02em;}
+  .bounds{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;color:var(--mut);margin-top:4px;font-variant-numeric:tabular-nums;}
+  .bounds b{color:var(--blue);font-weight:700;font-size:13.5px;}
+  .sub{color:var(--mut);margin:0 0 12px;font-size:13.5px;}
+  .setup{margin:0 0 18px;padding-left:18px;color:var(--mut);font-size:13px;line-height:1.5;}
+  .setup li{margin-bottom:5px;} .setup b{color:var(--ink);} .setup a{color:var(--blue);}
+  .controls{display:flex;gap:24px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
+            border-radius:10px;padding:16px 20px;margin-bottom:18px;align-items:center;}
+  .ctl{flex:1;min-width:220px;}
+  .ctl label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;}
+  .ctl label b{color:var(--blue);font-variant-numeric:tabular-nums;}
+  .ctl .hint{color:var(--mut);font-size:11.5px;font-weight:400;}
+  input[type=range]{width:100%;accent-color:var(--blue);}
+  .toggles{display:flex;flex-direction:column;gap:10px;min-width:210px;}
+  .tog{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;white-space:nowrap;}
+  .switches{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 20px;margin-bottom:18px;display:flex;flex-direction:column;gap:11px;}
+  .swtitle{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:700;}
+  .swrow{display:flex;align-items:baseline;gap:12px;cursor:pointer;flex-wrap:wrap;}
+  .swlab{font-weight:600;font-size:13.5px;min-width:200px;display:flex;align-items:center;gap:8px;}
+  .swlab .hint{color:var(--mut);font-size:11.5px;font-weight:400;}
+  .swrow em{color:var(--mut);font-size:12px;line-height:1.4;flex:1;min-width:260px;}
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  #chart{width:100%;}
+  .ticker-lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);}
+  .metric{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.12;margin:1px 0;}
+  .metric small{font-size:14px;font-weight:600;color:var(--mut);}
+  .cfg{font-size:13px;font-weight:600;margin:10px 0 3px;color:var(--ink);}
+  table.items{width:100%;border-collapse:collapse;font-size:13px;}
+  table.items td{padding:4px 2px;border-bottom:1px solid #eef1f4;font-variant-numeric:tabular-nums;}
+  table.items tr.sec td{font-weight:700;color:var(--mut);font-size:11px;text-transform:uppercase;
+     letter-spacing:.05em;border-bottom:none;padding-top:9px;}
+  table.items td.v{text-align:right;font-weight:600;}
+  table.items tr.tot td{border-top:2px solid var(--line);border-bottom:none;font-weight:700;padding-top:8px;}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:7px;}
+  .note{color:var(--mut);font-size:12px;margin-top:14px;line-height:1.45;}
+  .assump{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;font-size:12.5px;}
+  .assump summary{cursor:pointer;font-weight:600;color:var(--blue);list-style:revert;font-size:14.5px;text-align:center;}
+  .assump ul{margin:9px 0 2px;padding-left:18px;color:var(--mut);line-height:1.55;}
+  .assump li{margin-bottom:5px;} .assump b{color:var(--ink);}
+  .summary{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-top:18px;}
+  .scard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;}
+  .scard h3{margin:0 0 10px;font-size:14.5px;letter-spacing:-.01em;}
+  .scard h3 span{font-weight:500;color:var(--mut);font-size:12.5px;}
+  .eq{font-size:13.5px;font-weight:600;color:var(--blue);background:#eef4f9;border-radius:6px;
+      padding:7px 10px;text-align:center;margin-bottom:10px;}
+  .eqnum{font-size:13.5px;font-variant-numeric:tabular-nums;line-height:1.7;margin-bottom:9px;}
+  .eqnum b{font-weight:700;} .eqnum .ok{color:var(--green);} .eqnum .no{color:var(--red);}
+  .sdesc{color:var(--mut);font-size:12.5px;line-height:1.5;margin:0;}
+  .sdesc b{color:var(--ink);}
+  .pbul{margin:0;padding-left:17px;font-size:12.5px;color:var(--mut);line-height:1.5;}
+  .pbul li{margin-bottom:7px;} .pbul li b{color:var(--ink);} .pbul .no{color:var(--red);}
+  .levpanel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 20px;margin-bottom:18px;}
+  .levpanel>summary{cursor:pointer;font-weight:700;font-size:13.5px;color:var(--ink);list-style:revert;}
+  .levpanel>summary span{font-weight:400;color:var(--mut);font-size:12px;}
+  .lbtns{display:flex;gap:10px;margin:12px 0 4px;}
+  .lbtn{font:600 12px/1 inherit;padding:7px 12px;border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:var(--ink);}
+  .lbtn:hover{border-color:var(--blue);color:var(--blue);}
+  .lgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 26px;margin-top:8px;}
+  .lgroup{grid-column:1/-1;margin:8px 0 1px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:700;border-top:1px solid #eef1f4;padding-top:9px;}
+  .lgroup:first-child{border-top:none;padding-top:0;}
+  .lv{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;padding:2px 0;cursor:pointer;}
+  .lv input{margin-top:2px;accent-color:var(--blue);}
+  .lv b{color:var(--ink);font-weight:600;} .lv em{color:var(--mut);font-style:normal;}
+  @media(max-width:820px){.summary{grid-template-columns:1fr;} .grid{grid-template-columns:1fr;} .lgrid{grid-template-columns:1fr;}}
+</style></head>
+<body><div class="wrap">
+  <h1>Firm industrial heat + flexible fusion power</h1>
+  <p class="sub"><b>What this tool shows:</b> if a D-T tokamak is upsized to sell <b>both</b> firm industrial heat and grid electricity, then &mdash;
+     (1)&nbsp;what plant size is optimal for a given heat-to-power price ratio (Cost<sub>heat</sub>/Cost<sub>elec</sub>), and
+     (2)&nbsp;how much extra NPV do thermal storage + smart dispatch buy when the power price swings on a&nbsp;~24&nbsp;h cycle? Move the sliders; LCOE and NPV update live.</p>
+  <ul class="setup">
+    <li><b>Fixed heat at a constant price</b> &mdash; industrial heat is bought on long-term firm contracts, so the <b>200&nbsp;MW<sub>th</sub></b> offtake and its $/MWh<sub>th</sub> price are held constant and delivered 24/7, whatever the power market does. The <b>electricity</b> price, by contrast, is yours to set indirectly &mdash; the heat-to-power ratio slider fixes its average level (Cost<sub>elec</sub>&nbsp;=&nbsp;Cost<sub>heat</sub>/ratio) and the volatility slider sets how far it swings over the day.</li>
+    <li><b>Power added on top of the heat</b> &mdash; the reactor is sized to supply the heat contract <i>plus</i> a net electric output you choose, so electricity capacity is added on top of the heat, not carved out of it.</li>
+    <li><b>4&nbsp;h thermal energy storage (TES)</b> &mdash; lets the reactor run flat-out baseload while the turbine shifts electricity into the daily evening price peak; the store discharges to keep the heat firm. ~4&nbsp;h matches the width of a typical evening peak &mdash; longer storage would sit idle most of the day.</li>
+    <li><b>Capacity revenue</b> &mdash; grid capacity markets pay $/kW-yr for firm, dispatchable capacity a plant can guarantee at peak. It is real, non-electricity revenue, so it is credited against cost and lowers the net LCOE, exactly like the heat sales.</li>
+    <li><b>Price-taker</b> &mdash; the grid is assumed large enough that the plant's throttling doesn't move market prices; the turbine is upsized to convert the <i>full</i> thermal stream during peaks, while the TES covers the heat.</li>
+    <li><b>Baseline model</b> &mdash; reactor capital and physics-based power balance and scaling are taken from <a href="https://github.com/1cFE/1costingfe" target="_blank" rel="noopener">1costingFE</a>'s D-T tokamak model (&eta;<sub>gen</sub>&nbsp;=&nbsp;0.40, 85% availability, CRF 7%/30&nbsp;yr).</li>
+  </ul>
+
+  <div class="controls">
+    <div class="ctl">
+      <label>Heat price Cost<sub>heat</sub> &nbsp;<span class="hint">$/MWh<sub>th</sub> &middot; firm heat anchor</span></label>
+      <input type="range" id="mh" min="20" max="100" step="2.5" value="40">
+      <div class="bounds"><span>$20</span><b id="mlab">$40</b><span>$100</span></div>
+    </div>
+    <div class="ctl">
+      <label>Heat : power price ratio &nbsp;<span class="hint">Cost<sub>heat</sub>/Cost<sub>elec</sub> &middot; higher &rarr; power cheaper</span></label>
+      <input type="range" id="ratio" min="0.2" max="1.2" step="0.025" value="0.35">
+      <div class="bounds"><span>0.2</span><b id="rlab">0.35</b><span>1.2</span></div>
+    </div>
+    <div class="ctl">
+      <label>Power-price volatility &nbsp;<span class="hint">low &harr; high evening peak</span></label>
+      <input type="range" id="vol" min="0" max="2" step="0.1" value="1">
+      <div class="bounds"><span>0&times;</span><b id="vlab">1.0&times;</b><span>2&times;</span></div>
+    </div>
+    <div class="ctl">
+      <label>Net power output &nbsp;<span class="hint">MW<sub>e</sub> &middot; sets reactor size</span></label>
+      <input type="range" id="pnet" min="100" max="500" step="25" value="300">
+      <div class="bounds"><span>100</span><b id="plab">300 MW</b><span>500 MW</span></div>
+    </div>
+  </div>
+
+  <div class="switches">
+    <div class="swtitle">Revenue levers &mdash; toggle to isolate each effect</div>
+    <label class="swrow"><span class="swlab"><input type="checkbox" id="smart" checked> TES + smart dispatch</span>
+      <em>Adds 4&nbsp;h storage and lets the turbine throttle up into the evening price peak (vs. flat baseload) &mdash; isolates the value of dispatch flexibility.</em></label>
+    <label class="swrow"><span class="swlab"><input type="checkbox" id="capon" checked> Capacity market <span class="hint">$88/kW-yr</span></span>
+      <em>Credits the plant's firm peak capacity as non-electricity revenue &mdash; shows how much capacity payments offset the LCOE and NPV.</em></label>
+  </div>
+
+  <details class="levpanel" id="levpanel" open>
+    <summary>NOAK cost levers <span>&mdash; stack aggressive Nth-of-a-kind assumptions on the tokamak capital &amp; financing; each scales the underlying 1costingFE accounts and re-derives indirect, IDC, and capital recovery. All off = the tuned baseline above. <b>All lever percentages are reductions from that baseline</b> (e.g. &minus;35% &equiv; 0.65&times; baseline); systemic &amp; financing levers instead show absolute before &rarr; after values.</span></summary>
+    <div class="lbtns">
+      <button type="button" class="lbtn" id="lreset">Reset to baseline</button>
+      <button type="button" class="lbtn" id="lall">Max corridor (all aggressive)</button>
+    </div>
+    <div class="lgrid" id="lgrid"></div>
+  </details>
+
+  <div class="grid">
+    <div class="card">
+      <div id="chart"></div>
+      <details class="assump">
+        <summary>Model assumptions</summary>
+        <ul>
+          <li><b>Price-taker:</b> the plant sells at the market clearing price regardless of how much it exports (no price-maker / grid-congestion effect on price).</li>
+          <li><b>Firm heat:</b> 200&nbsp;MW<sub>th</sub> delivered 24/7 at the price set by the <b>Cost<sub>heat</sub> slider</b> (default $40/MWh<sub>th</sub> &asymp; $11.7/MMBtu &mdash; firm clean high-grade heat + modest carbon adder; the $20&ndash;100 range spans gas-parity up to premium high-grade heat that, in deep-decarbonization scenarios, can meet or exceed the cost of clean-firm electricity). The Cost<sub>heat</sub>/Cost<sub>elec</sub> ratio slider then sets the electricity price Cost<sub>elec</sub> = Cost<sub>heat</sub>/ratio, so raising Cost<sub>heat</sub> lifts <i>both</i> heat and (at fixed ratio) power price.</li>
+          <li><b>Price shape:</b> a representative US duck-curve day (evening peak); the volatility slider scales the hourly deviation about the mean while holding the mean at Cost<sub>elec</sub>.</li>
+          <li><b>Plant scaling:</b> reactor + turbine capital and <b>recirc-correct net electric</b> interpolated from 1costingFE D-T tokamak points (100&ndash;2000&nbsp;MW<sub>e</sub>); &eta;<sub>gen</sub>=0.40, availability 0.85.</li>
+          <li><b>Sizing:</b> the reactor delivers the 200&nbsp;MW<sub>th</sub> heat <i>and</i> the chosen net power &mdash; thermal &asymp; 200&nbsp;+&nbsp;(P<sub>net</sub>+recirc)/&eta;<sub>gen</sub> &mdash; so the slider adds capacity <i>on top of</i> the heat (full-power net = P<sub>net</sub>+80&nbsp;MW<sub>e</sub>; the heat draw brings it back to P<sub>net</sub>). With smart dispatch the turbine is sized for <b>full-thermal conversion</b> (net P<sub>net</sub>+80) so it can peak while the TES covers heat; the rigid case uses a smaller turbine sized to P<sub>net</sub>.</li>
+          <li><b>Smart dispatch:</b> 4&nbsp;h TES firms the heat while the plant throttles to full net power in the 4 highest-price hours; the store is recharged off-peak, so annual energy is conserved (smart only re-times it).</li>
+          <li><b>Capacity market</b> (when on): $88/kW-yr on the peak net capacity.</li>
+          <li><b>Costs:</b> TES $30/kWh<sub>th</sub>; heat-export BoP $200/kW<sub>th</sub>; O&amp;M &asymp; 1.47%/yr of capital; heat BoP + TES added to the 1costingFE plant capital.</li>
+          <li><b>Economics:</b> CRF at 7% / 30&nbsp;yr (0.081); NPV = level annual profit &times; 12.4 (30-yr annuity).</li>
+          <li><b>Net LCOE</b> credits heat + capacity revenue against cost; the <b>captured price</b> is the dispatch-weighted realized electricity price (this is where TES/dispatch value shows, not in the cost-LCOE).</li>
+        </ul>
+      </details>
+    </div>
+    <div class="card">
+      <div class="ticker-lbl">Effective LCOE <span style="text-transform:none;letter-spacing:0">(heat + capacity credited)</span></div>
+      <div class="metric" id="lcoe">&mdash;</div>
+      <div class="ticker-lbl" style="margin-top:10px">Plant NPV (30 yr)</div>
+      <div class="metric" id="npv">&mdash;</div>
+      <div class="cfg" id="cfg"></div>
+      <table class="items" id="items"></table>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="scard">
+      <h3>Path to 1&cent;/kWh <span>($10/MWh net LCOE)</span></h3>
+      <p class="tldr"><b>TL;DR</b> &mdash; heat sales alone cannot bridge the LCOE gap.</p>
+      <ul class="pbul" id="pathlist"></ul>
+    </div>
+    <div class="scard">
+      <h3>Should you add more power?</h3>
+      <div class="eq">Cost<sub>elec</sub> + capacity credit &nbsp;&gt;&nbsp; marginal power cost</div>
+      <div class="eqnum" id="addpow"></div>
+      <p class="sdesc" id="adddesc"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- 1costingFE D-T tokamak scaling (recirc-correct net electric) ----
+const PTH =[796,1128,1699,2452,3140,4207,5332];    // thermal MW_th
+const PTOT=[4287,5100,6286,7590,8614,9995,11557];   // total capital M$ (reactor + turbine)
+const PT23=[72,100,146,205,258,339,425];            // turbine (CAS23) M$
+const PNET=[100,200,400,700,1000,1500,2000];         // NET electric MW_e at full power
+function interp(x,xs,ys){
+  if(x<=xs[0]) return ys[0];
+  for(let i=0;i<xs.length-1;i++) if(x<=xs[i+1]){const t=(x-xs[i])/(xs[i+1]-xs[i]);return ys[i]+t*(ys[i+1]-ys[i]);}
+  const i=xs.length-2,t=(x-xs[i])/(xs[i+1]-xs[i]);return ys[i]+t*(ys[i+1]-ys[i]);
+}
+let raw=[0.80,0.75,0.72,0.72,0.75,0.82,0.92,1.00,0.98,0.85,0.70,0.60,
+         0.55,0.55,0.60,0.72,0.95,1.35,1.75,1.85,1.60,1.25,1.00,0.88];
+const mean=raw.reduce((a,b)=>a+b,0)/24, MULT=raw.map(x=>x/mean);
+const ETA=0.40,AVAIL=0.85,CRF=0.0806,ANN=12.409,TESk=30,BOPk=200;
+const HFIRM=200, TES_H=4, tesMwh=HFIRM*TES_H, CAPKW=88;
+
+// ---- tokamak account fractions of total capital (from 1costingFE, per PNET point) ----
+const F_idc=[0.16123,0.16123,0.16123,0.16123,0.16123,0.16123,0.16123];
+const F_ind=[0.13249,0.13167,0.13042,0.12896,0.12774,0.126,0.12486];
+const F_fix=[0.04382,0.04875,0.05623,0.06503,0.07233,0.08276,0.08962];
+const F_mag=[0.17465,0.15878,0.14399,0.13483,0.13066,0.12806,0.12325];
+const F_cd=[0.14257,0.1382,0.12231,0.09491,0.06811,0.02554,1e-05];
+const F_blk=[0.03806,0.04139,0.04623,0.05201,0.05703,0.06466,0.07042];
+const F_shield=[0.03955,0.04265,0.04708,0.05227,0.05673,0.06344,0.0683];
+const F_vessel=[0.02101,0.02265,0.025,0.02775,0.0301,0.03365,0.03622];
+const F_cryo=[0.06461,0.06296,0.06033,0.05718,0.05454,0.0508,0.04833];
+const F_rh=[0.01969,0.01951,0.01917,0.01883,0.01861,0.01837,0.0178];
+const F_iandc=[0.00805,0.00837,0.00871,0.00901,0.00922,0.00947,0.0095];
+const F_bld=[0.0697,0.06898,0.07026,0.07364,0.0772,0.08289,0.08667];
+const F_elec=[0.00709,0.00826,0.00983,0.01145,0.01269,0.01434,0.01556];
+const F_heatrej=[0.00719,0.00838,0.00997,0.01161,0.01287,0.01455,0.01578];
+const F_om71=[0.86253,0.82991,0.72782,0.64022,0.59834,0.52317,0.47652];
+const CONSTR0=6, INDIR0=0.20;
+
+// key, base, agg, group, label(bold<em>mechanism</em>).  abs levers (wacc/av/life/constr/indir)
+// carry real values; account levers carry a capital multiplier (base 1.0).
+const LEVERS=[
+ ["wacc",0.07,0.03,"Systemic","WACC 7% &rarr; 3% <em>&mdash; de-risked Nth-plant debt (sovereign / green-infrastructure finance); sets the dominant capital-recovery term</em>"],
+ ["av",0.85,0.95,"Systemic","Availability 0.85 &rarr; 0.95 <em>&mdash; steady-state operation + digital-twin predictive maintenance spread fixed cost over more MWh</em>"],
+ ["life",30,60,"Systemic","Plant lifetime 30 &rarr; 60 yr <em>&mdash; replaceable in-vessel core lets the tokamak outlast the book life; longer amortization lowers the capital-recovery factor</em>"],
+ ["constr",6,4,"Schedule &amp; indirect","Construction 6 &rarr; 4 yr <em>&mdash; modular factory-built sectors cut interest-during-construction and field indirects</em>"],
+ ["indir",0.20,0.10,"Schedule &amp; indirect","Indirect 20% &rarr; 10% <em>&mdash; standardized repeat design + stable licensing give EMWG-class overhead, not FOAK re-engineering</em>"],
+ ["om",1.0,0.0855,"O&amp;M","Fixed O&amp;M &minus;91% (117 &rarr; 10 FTE) <em>&mdash; near-autonomous / lights-out ops at 1 GWe; fleet-scale maintenance pooling</em>"],
+ ["mag",1.0,0.60,"Tokamak core","Magnets / SC coils &minus;40% <em>&mdash; HTS/REBCO volume production + higher field shrink the coil set (the largest reactor account)</em>"],
+ ["cd",1.0,0.65,"Tokamak core","Current drive &amp; heating &minus;35% <em>&mdash; efficient NBI/EC sources at fleet $/W; high bootstrap fraction cuts driven current</em>"],
+ ["blk",1.0,0.70,"Tokamak core","Breeding blanket &minus;30% <em>&mdash; standardized breeding-blanket modules on a production line</em>"],
+ ["cryo",1.0,0.70,"Tokamak core","Cryoplant &minus;30% <em>&mdash; HTS's higher operating temperature eases the cryogenic heat load and plant size</em>"],
+ ["vessel",1.0,0.625,"Reactor &amp; BoP","Vacuum vessel &minus;38% <em>&mdash; series-produced standardized sectors lower the fabrication $/m&sup3;</em>"],
+ ["shield",1.0,0.743,"Reactor &amp; BoP","Shield &minus;26% <em>&mdash; optimized B&#8324;C-tungsten mix + bulk sourcing replace premium shielding</em>"],
+ ["iandc",1.0,0.588,"Reactor &amp; BoP","I&amp;C &minus;41% <em>&mdash; software-defined / AI plasma control consolidates instrumentation hardware</em>"],
+ ["rh",1.0,0.533,"Reactor &amp; BoP","Remote handling &minus;47% <em>&mdash; commodity industrial robotics + standardized cassette maintenance vs bespoke systems</em>"],
+ ["hr",1.0,0.60,"Reactor &amp; BoP","Heat rejection &minus;40% <em>&mdash; conventional power-industry cooling at fleet scale</em>"],
+ ["bld",1.0,0.65,"Siting (brownfield)","Buildings &minus;35% <em>&mdash; brownfield retirement site: reuse turbine hall, cooling, and site works</em>"],
+ ["elec",1.0,0.40,"Siting (brownfield)","Grid interconnect &minus;60% <em>&mdash; reuse the retired plant's existing HV switchyard and interconnection</em>"],
+];
+const Lstate={}; LEVERS.forEach(l=>Lstate[l[0]]=false);
+function LV(){const v={};LEVERS.forEach(l=>v[l[0]]=Lstate[l[0]]?l[2]:l[1]);return v;}
+function econOf(v){const w=v.wacc,n=v.life,crf=w*Math.pow(1+w,n)/(Math.pow(1+w,n)-1);return {crf,ann:1/crf,avail:v.av};}
+// levered total capital at a given plant size (MW_e), re-deriving indirect + IDC.
+function capOf(size,v){
+  const tot0=interp(size,PNET,PTOT), gi=k=>interp(size,PNET,k);
+  const Fidc=gi(F_idc),Find=gi(F_ind),Ffix=gi(F_fix);
+  const acc={mag:gi(F_mag),cd:gi(F_cd),blk:gi(F_blk),shield:gi(F_shield),vessel:gi(F_vessel),
+             cryo:gi(F_cryo),rh:gi(F_rh),iandc:gi(F_iandc),bld:gi(F_bld),elec:gi(F_elec),hr:gi(F_heatrej)};
+  const direct0=(1-Fidc-Find-Ffix)*tot0;
+  let save=0; for(const k in acc) save+=acc[k]*tot0*(1-v[k]);
+  const directLev=direct0-save, ind0=Find*tot0;
+  const indLev=ind0*(directLev/direct0)*(v.indir/INDIR0);
+  const overnightLev=directLev+indLev+Ffix*tot0;
+  const fidc=(w,T)=>(Math.pow(1+w,T)-1)/(w*T)-1;
+  const idcLev=overnightLev*(Fidc/(1-Fidc))*(fidc(v.wacc,v.constr)/fidc(0.07,CONSTR0));
+  return {tot:overnightLev+idcLev, tot0, om71:gi(F_om71)};
+}
+
+// price-taker: net power output (MW_e) is the input; reactor size follows from it
+function evaluate(pnet,ratio,capkw,smart,vol,mh){
+  const v=LV(), {crf,ann,avail}=econOf(v);             // NOAK-levered financing + availability
+  const ME=mh/ratio, PRICE=MULT.map(m=>ME*(1+vol*(m-1)));
+  const s=[...PRICE].sort((a,b)=>b-a);
+  const topSum=s.slice(0,4).reduce((a,b)=>a+b,0), offSum=s.slice(4).reduce((a,b)=>a+b,0);
+  // Reactor is sized to deliver the heat AND pnet: full-power net = pnet + heatCut, so after
+  // diverting 200 MW_th to heat it nets exactly pnet. Cost/thermal are looked up at that full net.
+  const heatCut=ETA*HFIRM;                             // 80 MW_e-equiv of the 200 MW_th heat
+  const Nfull=pnet+heatCut, Q=interp(Nfull,PNET,PTH);  // full-power net; reactor thermal
+  const offCut=heatCut*24/(24-TES_H);                  // 192, incl. TES recharge
+  const peakMWe = smart ? Nfull : pnet;                // peak: full net (heat from TES); rigid: flat pnet
+  const offMWe  = smart ? Nfull-offCut : pnet;         // off-peak (smart): pnet-32
+  const heatRev=HFIRM*mh*8760*avail/1e6;
+  const powRev = smart ? (Nfull*topSum + offMWe*offSum)*365*avail/1e6
+                       : pnet*ME*8760*avail/1e6;
+  const tes = smart ? tesMwh : 0;
+  const capRev=Math.max(0,peakMWe)*1e3*capkw/1e6;
+  const C=capOf(Nfull,v);                              // levered total capital at reactor size
+  const turbFull=interp(Nfull,PNET,PT23);              // turbine for full thermal conversion (net Nfull)
+  const reactorC=C.tot-turbFull;                       // reactor only (same reactor for smart & rigid)
+  const turbC = smart ? turbFull : interp(pnet,PNET,PT23); // smart: full turbine; rigid: right-sized to pnet
+  const tesC=TESk*tes*1e3/1e6, bopC=BOPk*HFIRM*1e3/1e6;
+  const cap=reactorC+turbC+tesC+bopC;
+  const om=0.0147*C.tot0*(C.om71*v.om+(1-C.om71));     // O&M: staffing (levered) + replacement, ~1.47% of capital at baseline
+  const profit=powRev+heatRev+capRev-(crf*cap+om);
+  const netMWh=pnet*8760*avail;                        // average net output = pnet (energy conserved)
+  const captured = netMWh>1e3 ? powRev*1e6/netMWh : NaN;
+  const netLcoe  = netMWh>1e3 ? (crf*cap+om-heatRev-capRev)*1e6/netMWh : NaN;
+  return {Q,pnet,npv:profit*ann/1e3,cogen:HFIRM/Q*100,netFull:Nfull,peakMWe,ME,PRICE,
+          powRev,heatRev,capRev,reactorC,turbC,tesC,bopC,om,cap,netMWh,captured,netLcoe,crf,ann,avail,v};
+}
+
+const fmt=(x,d=0)=>x.toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+const money=x=>(x<0?'−$':'$')+fmt(Math.abs(x),0)+'M';
+function render(){
+  const ratio=+ratioEl.value, smart=smartEl.checked, capkw=caponEl.checked?CAPKW:0,
+        vol=+volEl.value, pnet=+pnetEl.value, mh=+mhEl.value;
+  rlab.textContent=ratio.toFixed(2); vlab.textContent=vol.toFixed(1)+'×'; plab.textContent=fmt(pnet)+' MW';
+  mlab.textContent='$'+fmt(mh);
+  const r=evaluate(pnet,ratio,capkw,smart,vol,mh);
+
+  // LCOE first
+  if(isNaN(r.netLcoe)){ lcoeEl.innerHTML='&mdash; <small>net importer</small>'; lcoeEl.style.color='var(--amber)'; }
+  else { lcoeEl.innerHTML=(r.netLcoe<0?'−$':'$')+fmt(Math.abs(r.netLcoe),0)+' <small>/MWh</small>';
+         lcoeEl.style.color=r.netLcoe<80?'var(--green)':'var(--ink)'; }
+  // NPV second (equal font)
+  npvEl.innerHTML=(r.npv<0?'−$':'$')+fmt(Math.abs(r.npv),2)+' <small>B</small>';
+  npvEl.style.color=r.npv>=0?'var(--green)':'var(--red)';
+
+  cfgEl.innerHTML=`<b>${fmt(pnet)}&nbsp;MW<sub>e</sub></b> net`
+    +(smart?` &middot; turbine <b>${fmt(r.peakMWe)}&nbsp;MW<sub>e</sub></b> peak`:'')
+    +` &middot; <b>${fmt(r.Q)}&nbsp;MW<sub>th</sub></b> reactor `
+    +`&middot; <b>${r.cogen.toFixed(0)}%</b> cogen &middot; Cost<sub>elec</sub>&nbsp;=&nbsp;$${fmt(r.ME)}/MWh`;
+
+  const rows=[
+    ['sec','REVENUE',''],
+    ['#1b6ca8','Power (energy)','+'+money(r.powRev)],
+    ['#7c5cc4','Capacity market','+'+money(r.capRev)],
+    ['#d9822b','Firm heat','+'+money(r.heatRev)],
+    ['sec','ANNUALIZED COST',''],
+    ['#7a8697','Reactor','−'+money(r.crf*r.reactorC)],
+    ['#5b6472','Turbine','−'+money(r.crf*r.turbC)],
+    ['#d69220','TES (4 h)','−'+money(r.crf*r.tesC)],
+    ['#c07a2b','Heat BoP','−'+money(r.crf*r.bopC)],
+    ['#8593a2','O&amp;M','−'+money(r.om)],
+  ];
+  let html=''; rows.forEach(([c,l,v])=>{ html+= c==='sec'
+    ? `<tr class="sec"><td colspan="2">${l}</td></tr>`
+    : `<tr><td><span class="sw" style="background:${c}"></span>${l}</td><td class="v">${v}</td></tr>`; });
+  html+=`<tr class="tot"><td>Annual profit</td><td class="v">${money(r.npv/r.ann*1e3)}/yr</td></tr>`;
+  itemsEl.innerHTML=html;
+
+  // ---- Summary 1: should you add more power? (marginal-power economics) ----
+  const capCredit = capkw*1e3/(8760*r.avail);                                  // $/MWh from capacity market (0 if off)
+  const dd=25, margMW=(capOf(r.netFull+dd,r.v).tot-capOf(r.netFull-dd,r.v).tot)/(2*dd); // levered M$ per MW_e
+  const margCost=(r.crf+0.0147)*margMW*1e6/(8760*r.avail);                     // $/MWh marginal cost of added power
+  const meThresh=margCost-capCredit, accr=(r.ME+capCredit)>margCost;
+  document.getElementById('addpow').innerHTML=
+      `<b>$${fmt(r.ME)}</b> Cost<sub>elec</sub> + <b>$${fmt(capCredit)}</b> cap `
+     +`${accr?'&gt;':'&lt;'} <b>$${fmt(margCost)}</b> marg. cost `
+     +`&nbsp;&rarr;&nbsp; <b class="${accr?'ok':'no'}">${accr?'✓ add power':'✗ hold size'}</b><br>`
+     +`<span style="color:var(--mut)">break-even Cost<sub>elec</sub>* = <b>$${fmt(meThresh)}</b>/MWh at this size (falls as the plant grows)</span>`;
+  document.getElementById('adddesc').innerHTML= accr
+     ? `The next MW of net power clears its marginal cost, so NPV keeps climbing as you scale up. Marginal reactor cost falls with size, so the bar only drops further.`
+     : `At this size the next MW earns less than it costs, so growing <i>lowers</i> NPV. The plant must reach a larger size, a richer Cost<sub>elec</sub> (lower ratio), or turn capacity payments on before adding power pays.`;
+
+  // ---- Summary 2: path to 1¢/kWh — via the alternate-revenue credits ----
+  const grossCost=(r.crf*r.cap+r.om)*1e6/r.netMWh;                             // $/MWh all-in, before credits
+  const heatCr=r.heatRev*1e6/r.netMWh, capCr=r.capRev*1e6/r.netMWh, gap=r.netLcoe-10;
+  const mhNeed=(grossCost-10-capCr)*pnet/HFIRM;                                // Mh (heat alone) for $10/MWh at this size
+  document.getElementById('pathlist').innerHTML=
+      `<li>gross power cost <b>$${fmt(grossCost)}</b> &minus; heat <b>$${fmt(heatCr)}</b> &minus; capacity <b>$${fmt(capCr)}</b> = net LCOE <b>$${fmt(r.netLcoe)}</b>/MWh &mdash; still <b class="no">$${fmt(gap)}</b>/MWh over the $10 target.</li>`
+     +`<li><b>Heat sales are diluted as power output grows.</b> On heat sales alone at the 200 MW<sub>th</sub> contract, an impossibly high heat cost of <b>$${fmt(mhNeed)}/MWh<sub>th</sub></b> would be needed to reach 1&cent;/kWh.</li>`
+     +`<li><b>A heat-led plant can reach it:</b> &asymp;1&nbsp;GW<sub>th</sub> firm heat at <b>~$78/MWh<sub>th</sub></b> (&asymp;$23/MMBtu, high-grade decarbonized) plus an optimistic <b>$150/kW-yr</b> capacity payment, with electricity a <b>~100 MW<sub>e</sub> byproduct</b> &rarr; net LCOE &asymp; <b>1&cent;/kWh</b>. It becomes a heat plant that sells power on the side. <b>Reality check:</b> few industrial offtakers need ~1&nbsp;GW<sub>th</sub> of firm heat &mdash; that is the process demand of a very large steel mill or refinery complex &mdash; so this regime is rarely on the table.</li>`
+     +`<li><b>Storage value is capacity, not arbitrage:</b> the TES unlocks sizeable capacity revenue (&asymp;$33M/yr here), but daily energy arbitrage from re-timing the stored heat is modest &mdash; <b>~$10M/yr</b> at typical volatility and only <b>~$20M/yr</b> even at 2&times; (highly volatile) grid prices.</li>`;
+
+  // 24 h price chart — self-contained inline SVG (portable; no external library)
+  const P=r.PRICE, order=[...P.keys()].sort((a,b)=>P[b]-P[a]), pk=smart?order.slice(0,4):[];
+  const W=560,H=300, mL=52,mR=16,mT=28,mB=54, pw=W-mL-mR, plotH=H-mT-mB;
+  const ymax=Math.max(50,Math.ceil(Math.max(mh,...P)*1.1/50)*50);
+  const X=h=>mL+(h+0.5)/24*pw, Y=v=>mT+plotH-(v/ymax)*plotH, px=v=>v.toFixed(1);
+  let g='';
+  pk.forEach(h=>{ g+=`<rect x="${px(mL+h/24*pw)}" y="${mT}" width="${px(pw/24)}" height="${plotH}" fill="rgba(27,108,168,0.13)"/>`; });
+  for(let i=0;i<=4;i++){ const yv=ymax*i/4, yy=Y(yv);
+    g+=`<line x1="${mL}" y1="${px(yy)}" x2="${W-mR}" y2="${px(yy)}" stroke="#eef1f4"/>`;
+    g+=`<text x="${mL-6}" y="${px(yy+3)}" text-anchor="end" font-size="10" fill="#8593a2">$${fmt(yv)}</text>`; }
+  for(let h=0;h<=21;h+=3){ g+=`<text x="${px(X(h))}" y="${H-mB+16}" text-anchor="middle" font-size="10" fill="#8593a2">${h}</text>`; }
+  g+=`<line x1="${px(X(0))}" y1="${px(Y(mh))}" x2="${px(X(23))}" y2="${px(Y(mh))}" stroke="#d9822b" stroke-width="2.4"/>`;
+  g+=`<polyline points="${P.map((v,h)=>px(X(h))+','+px(Y(v))).join(' ')}" fill="none" stroke="#1b6ca8" stroke-width="2.4"/>`;
+  P.forEach((v,h)=>{ g+=`<circle cx="${px(X(h))}" cy="${px(Y(v))}" r="2.2" fill="#1b6ca8"/>`; });
+  if(pk.length){ const cx=pk.reduce((a,b)=>a+b,0)/pk.length, ax=X(cx);
+    g+=`<rect x="${px(ax-62)}" y="${mT+2}" width="124" height="14" fill="rgba(255,255,255,0.85)"/>`;
+    g+=`<text x="${px(ax)}" y="${mT+12}" text-anchor="middle" font-size="10" fill="#1b6ca8">Divert from heat &#8594; power</text>`; }
+  g+=`<text x="${mL}" y="16" font-size="12.5" font-weight="600" fill="#1e2530">Typical heat vs electricity price, 24 h</text>`;
+  g+=`<text x="${px(mL+pw/2)}" y="${H-6}" text-anchor="middle" font-size="10" fill="#5b6472">hour</text>`;
+  g+=`<text x="13" y="${px(mT+plotH/2)}" text-anchor="middle" font-size="10" fill="#5b6472" transform="rotate(-90 13 ${px(mT+plotH/2)})">$/MWh</text>`;
+  const lx=W-mR-150, ly=13;
+  g+=`<line x1="${lx}" y1="${ly}" x2="${lx+16}" y2="${ly}" stroke="#1b6ca8" stroke-width="2.4"/><text x="${lx+20}" y="${ly+3}" font-size="10" fill="#5b6472">Electricity</text>`;
+  g+=`<line x1="${lx+80}" y1="${ly}" x2="${lx+96}" y2="${ly}" stroke="#d9822b" stroke-width="2.4"/><text x="${lx+100}" y="${ly+3}" font-size="10" fill="#5b6472">Heat</text>`;
+  document.getElementById('chart').innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto" preserveAspectRatio="xMidYMid meet" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"><rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${g}</svg>`;
+}
+const ratioEl=document.getElementById('ratio'),caponEl=document.getElementById('capon'),
+      smartEl=document.getElementById('smart'),volEl=document.getElementById('vol'),
+      pnetEl=document.getElementById('pnet'),mhEl=document.getElementById('mh'),
+      rlab=document.getElementById('rlab'),vlab=document.getElementById('vlab'),plab=document.getElementById('plab'),
+      mlab=document.getElementById('mlab'),
+      lcoeEl=document.getElementById('lcoe'),npvEl=document.getElementById('npv'),
+      cfgEl=document.getElementById('cfg'),itemsEl=document.getElementById('items');
+[ratioEl,smartEl,caponEl,volEl,pnetEl,mhEl].forEach(e=>e.addEventListener('input',render));
+
+// ---- NOAK lever panel ----
+function buildLevers(){
+  let html='',g='';
+  LEVERS.forEach(l=>{const[k,,,grp,label]=l;
+    if(grp!==g){html+=`<div class="lgroup">${grp}</div>`;g=grp;}
+    const bold=label.split('<em>')[0], rest=label.includes('<em>')?'<em>'+label.split('<em>')[1]:'';
+    html+=`<label class="lv"><input type="checkbox" data-k="${k}" ${Lstate[k]?'checked':''}><span><b>${bold}</b>${rest}</span></label>`;
+  });
+  const el=document.getElementById('lgrid'); el.innerHTML=html;
+  el.querySelectorAll('input').forEach(i=>i.addEventListener('change',e=>{Lstate[e.target.dataset.k]=e.target.checked;render();}));
+}
+function setAll(val){LEVERS.forEach(l=>Lstate[l[0]]=val);buildLevers();render();}
+document.getElementById('lreset').addEventListener('click',()=>setAll(false));
+document.getElementById('lall').addEventListener('click',()=>setAll(true));
+buildLevers();
+render();
+</script>
+</body></html>
