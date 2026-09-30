@@ -10,7 +10,7 @@ Tier vocabulary, cumulative left to right:
   0 design basis / 1 applicable record / 2 extrapolation with a known mechanism /
   3 speculation, no mechanism.
 
-Three modelling choices worth stating, each argued out in the dispatch:
+Three modeling choices worth stating, each argued out in the dispatch:
 
   gold      Production is read off Marathon's own neutronics scan (Alchemy Fig. 5),
             Au(t) = A(1 - exp(-t/lambda)) with lambda = 74.2 mm, A = 3.13 t/yr at
@@ -36,7 +36,7 @@ Three modelling choices worth stating, each argued out in the dispatch:
             measures the denominator.  Grid volatility is held fixed -- see the
             note on the synfuel model below.
 
-            Matching does NOT equalise heat and hydrogen, and the residual is the
+            Matching does NOT equalize heat and hydrogen, and the residual is the
             real result:
             at tier 3 heat is worth $200/MWh_e (80/MWh_th over eta_gen) against
             H2's $71.15 (4.50 - 0.80 /kg over 52 kWh/kg), so heat throws off ~2.7x
@@ -79,7 +79,11 @@ CRF = [crf(w, n) for w, n in zip(WACC, LIFE)]
 # Mature corridor, compact tokamak at 1 GWe, rescaled onto this dispatch's own
 # published 1 GWe D-T baseline.  PROVISIONAL: wants a direct 1costingFE run with
 # the lever stack applied to this machine rather than the CT ratios.
-CT = [114.6, 88.5, 40.3, 24.0]
+# CT is the mature corridor's compact-tokamak ladder at 1 GWe (Magnetic_DT_Corridor,
+# corridor_tiers.json "tok_1g"): design basis, records, extrapolations, speculation,
+# the last holding the tier-2 fixed-O&M reduction (-55%), the one tier-3 O&M convention
+# the three D-T ladders share (lights-out operation is credited in none of them).
+CT = [114.5790, 90.3763, 41.4942, 24.7544]
 PLANT = [110.5 * c / CT[0] for c in CT]
 
 
@@ -150,7 +154,7 @@ def heat(t, price_th, tes=False, cap_kw_yr=0.0, h=HFIRM):
 # divert the cheapest hours, worth ~$10M/yr at tier 2 -- cannot reach the number;
 # it lives in NPV and captured price, which is how h2_led_plant_tool.html reports
 # it.  Laddering volatility here would pick up only its small adverse effect on
-# electrolyzer utilisation and miss the large favourable one.
+# electrolyzer utilization and miss the large favorable one.
 ELY_CAPEX, ELY_OM, LOG = 700.0, 0.03, 0.80
 ELY_MW = ETA * HFIRM                               # 80 MW, matched to heat
 GRID_MEAN, GRID_VOL = 40.0, 1.0
@@ -212,7 +216,7 @@ HEAT = [heat(0, 20.0, h=HEAT_MWTH[0]),
         heat(3, 80.0, tes=True, cap_kw_yr=140.0, h=HEAT_MWTH[3])]
 # The cooldown is set by a regulatory threshold, not by taste.  Marathon give
 # three: 6.8 yr to reach NRC Class-A low-level waste, 13.7 yr to need no
-# radioactive labelling at all (Class 7, 2700 pCi/g for 197Au), and 17.7 yr to
+# radioactive labeling at all (Class 7, 2700 pCi/g for 197Au), and 17.7 yr to
 # fall below banana-equivalent activity.  The dispatch's non-fungibility argument
 # rests on the PLACARD, which clears at 13.7 yr, so the published 14 yr IS that
 # threshold and it is held at every rung.
@@ -234,9 +238,10 @@ GOLD = [gold(0, KG1, 100, 14.0),
         gold(3, KG2, 415, 14.0, feed_usd_per_kg_enr=HG_TAILS_RESOLD, blanket=0.0)]
 
 # Synfuel: the sale price carries tiers 0-1 and the technology carries 2-3.
-#   price   grey $1.50 -> $3.00, the maximum statutory rate of the US 45V clean
-#           hydrogen production credit, held through tier 2 -> $4.50 at tier 3,
-#           the bottom of today's UNSUBSIDISED green H2 production cost range.
+#   price   grey $1.50 -> $3.00, a scenario price pegged to the maximum statutory
+#           rate of the US 45V clean-hydrogen production credit (a subsidy, not a
+#           selling-price record) -> $3.75 -> $6.00, the mid-range of today's
+#           UNSUBSIDISED green H2 production cost ($4.50-7.00).
 #   capex   IRENA, "Green Hydrogen Cost Reduction" (2020) puts installed cost at
 #           $650-1,000/kW in 2020 (avg ~$770; the tool's $700 sits inside it) and
 #           at $130-307/kW by 2050, the range spanning 1-5 TW of deployment.
@@ -292,7 +297,7 @@ NOTES = [
     f"gold {DOT} no blanket complexity markup\n"
     f"H{SUB2} {DOT} {D_}3.75/kg {DOT} 160 MW @ {D_}307/kW",
 
-    f"plant {DOT} 3% WACC {DOT} 0.98 av {DOT} 8% indirect\n"
+    f"plant {DOT} 3% WACC {DOT} 0.98 av {DOT} 2.5 yr build\n"
     f"heat {DOT} 500 MW-th @ {D_}80 + {D_}140/kW-yr\n"
     f"gold {DOT} 415 t/GW-th Hg content\n"
     f"H{SUB2} {DOT} {D_}6.00/kg {DOT} 200 MW @ {D_}130/kW",
@@ -308,9 +313,9 @@ lo = min(min(s) for _, s, _ in SERIES)
 hi = max(max(s) for _, s, _ in SERIES)
 ylo, yhi = lo - 20.0, hi * 1.13
 
-for k, (label, vals, colour) in enumerate(SERIES):
+for k, (label, vals, color) in enumerate(SERIES):
     off = (k - 1.5) * w
-    bars = ax.bar([i + off for i in x], vals, w, label=label, color=colour,
+    bars = ax.bar([i + off for i in x], vals, w, label=label, color=color,
                   edgecolor=SURFACE, linewidth=1.2, zorder=3)
     for bar, v in zip(bars, vals):
         pad = (yhi - ylo) * 0.011
@@ -339,7 +344,7 @@ ax.set_title("Alternate revenue: evidence-tier ladder, cumulative by tier",
              fontsize=16, color=INK, fontweight="600", loc="left", pad=20)
 ax.text(0, 1.018,
         f"1 GWe D-T tokamak {DOT} plant levers track the mature corridor {DOT} "
-        f"heat and synfuel diverted in step, 8% to 20% of output",
+        f"heat and synfuel diverted in step, 8% to 20% of output {DOT} indirects held at 20% nominal",
         transform=ax.transAxes, fontsize=11.5, color=MUTED, va="bottom")
 
 ax.grid(axis="y", color=RULE, lw=0.6, alpha=0.5, zorder=0)
