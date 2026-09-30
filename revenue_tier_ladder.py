@@ -81,8 +81,9 @@ CRF = [crf(w, n) for w, n in zip(WACC, LIFE)]
 # the lever stack applied to this machine rather than the CT ratios.
 # CT is the mature corridor's compact-tokamak ladder at 1 GWe (Magnetic_DT_Corridor,
 # corridor_tiers.json "tok_1g"): design basis, records, extrapolations, speculation,
-# the last with lights-out O&M (fixed O&M x 0.0855) as every tier-3 in the set now carries.
-CT = [114.5790, 90.3763, 41.4942, 20.8100]
+# the last holding the tier-2 fixed-O&M reduction (-55%), the one tier-3 O&M convention
+# the three D-T ladders share (lights-out operation is credited in none of them).
+CT = [114.5790, 90.3763, 41.4942, 24.7544]
 PLANT = [110.5 * c / CT[0] for c in CT]
 
 

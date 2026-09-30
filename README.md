@@ -17,11 +17,11 @@ market evidence for the co-product *and* the plant evidence beneath it together.
 | 0 · design basis | $110.50 | $116.23 | $89.35 | $112.80 |
 | 1 · applicable record | $87.16 | $86.01 | $64.89 | $92.05 |
 | 2 · extrapolation with a known mechanism | $40.02 | $23.85 | $17.10 | $38.36 |
-| 3 · speculation, no mechanism | $20.07 | **−$28.22** | **−$25.91** | **$1.69** |
+| 3 · speculation, no mechanism | $23.87 | **−$23.46** | **−$22.11** | **$6.40** |
 
 All figures $/MWh. At the design basis **only gold pays** — heat and synfuel both *raise*
 the cost of electricity, because the plant is too expensive for its own heat or hydrogen
-to be worth diverting. The plant's own levers carry $90.4/MWh of the descent, more than
+to be worth diverting. The plant's own levers carry $86.6/MWh of the descent, more than
 any co-product buys.
 
 ## Reproducing
@@ -44,7 +44,7 @@ python revenue_tornado.py          # figures/revenue_tornado.png
   0: design basis              110.50    116.23     89.35     112.80
   1: applicable record          87.16     86.01     64.89      92.05
   2: extrapolation              40.02     23.85     17.10      38.36
-  3: speculation                20.07    -28.22    -25.91       1.69
+  3: speculation                23.87    -23.46    -22.11       6.40
 ```
 
 The gold co-product ledger and the three interactive tools were produced against a
@@ -130,10 +130,10 @@ required to reproduce the ladder or the tornado**, which carry their own model.
   4.15× the mercury for 1.9× the gold.
 - The plant ladder is the mature corridor's compact-tokamak result at 1 GWe
   ([Magnetic_DT_Corridor](https://github.com/1cFE/Magnetic_DT_Corridor), `corridor_tiers.json`,
-  `tok_1g`: 114.58 / 90.38 / 41.49 / 20.81 $/MWh) rescaled onto this dispatch's $110.5
+  `tok_1g`: 114.58 / 90.38 / 41.49 / 24.75 $/MWh) rescaled onto this dispatch's $110.5
   baseline, `PLANT = 110.5 × CT / CT[0]`, not a direct 1costingFE run of this machine. Its
-  tier 3 carries lights-out O&M (fixed O&M × 0.0855) and the 20%-nominal indirect-cost
-  convention, as the mature and pulsed ladders do.
+  tier 3 holds the tier-2 fixed-O&M reduction (−55%, lights-out not credited) and the
+  20%-nominal indirect-cost convention, as the mature and pulsed ladders do.
 
 ## Contact
 
