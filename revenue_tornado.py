@@ -61,8 +61,6 @@ PANELS = [
          R.gold(T, R.KG1, 100, 14.0, feed_usd_per_kg_enr=TAILS), False),
         ("blanket markup  10% → 0",
          R.gold(T, R.KG1, 100, 14.0, blanket=0.0), False),
-        ("enrichment plant charged  ($150M)",
-         G0 + 150.0 * R.CRF[T] * 1e6 / (1000 * 8760 * R.AV[T]), False),
         ("all ladder levers", R.GOLD[3], True),
     ]),
     (f"+ synfuel", "#009E73", S0, [
@@ -83,7 +81,7 @@ lo = min(a - v for _, _, a, rows in PANELS for _, v, _ in rows)
 hi = max(a - v for _, _, a, rows in PANELS for _, v, _ in rows)
 span = hi - lo
 
-for ax, (title, colour, anchor, rows) in zip(axes, PANELS):
+for ax, (title, color, anchor, rows) in zip(axes, PANELS):
     ax.set_facecolor(SURFACE)
     labels = [r[0] for r in rows]
     vals = [anchor - r[1] for r in rows]
@@ -94,13 +92,13 @@ for ax, (title, colour, anchor, rows) in zip(axes, PANELS):
 
     for y, (v, ho) in enumerate(zip(vals, hollow)):
         ax.barh(y, v, 0.62, zorder=3,
-                color="none" if ho else colour,
-                edgecolor=colour, linewidth=1.8 if ho else 0.0,
+                color="none" if ho else color,
+                edgecolor=color, linewidth=1.8 if ho else 0.0,
                 hatch="///" if ho else None)
         # negative bars extend LEFT, so their label goes just right of zero --
         # putting it at the bar end would collide with the y tick labels
         ax.text(v + span * 0.02 if v >= 0 else span * 0.02, y,
-                f"{v:+.1f}", va="center", ha="left",
+                f"{v:+.2f}" if abs(v) < 0.1 else f"{v:+.1f}", va="center", ha="left",
                 fontsize=9.6, color=INK, fontweight="600", zorder=4)
 
     ax.set_yticks(range(len(labels)))
@@ -127,12 +125,14 @@ fig.text(0.005, 0.914,
          f" {DOT} hatched = all levers at once",
          fontsize=10.6, color=MUTED, ha="left", va="top")
 fig.text(0.005, 0.075,
-         f"For scale, the plant's own levers are worth {D_}{R.PLANT[0]-R.PLANT[3]:.1f}/MWh "
-         f"from tier 0 to tier 3 — more than any co-product buys.",
+         f"For scale: making the plant itself cheaper is worth {D_}"
+         f"{R.PLANT[0]-R.PLANT[3]:.1f} per megawatt-hour across the same four tiers "
+         f"— more than any of these co-products buys.",
          fontsize=9.6, color=MUTED, ha="left", va="bottom")
 fig.text(0.005, 0.020,
-         "Heat and synfuel interact strongly: price and volume compound, so the hatched "
-         "bar exceeds the sum of the parts. Gold's levers are nearly additive.",
+         "The striped bar is not the sum of the solid ones. For heat and synfuel, price and "
+         "volume multiply, so raising both together is worth far more than raising either "
+         "alone. Gold has no price lever, so its bars very nearly do add up.",
          fontsize=9.6, color=MUTED, ha="left", va="bottom")
 
 fig.subplots_adjust(left=0.165, right=0.995, top=0.800, bottom=0.185, wspace=0.70)

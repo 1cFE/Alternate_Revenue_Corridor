@@ -15,13 +15,13 @@ market evidence for the co-product *and* the plant evidence beneath it together.
 | Evidence tier | electricity only | + heat | + gold | + synfuel |
 |---|---|---|---|---|
 | 0 · design basis | $110.50 | $116.23 | $89.35 | $112.80 |
-| 1 · applicable record | $85.33 | $83.94 | $63.07 | $90.08 |
-| 2 · extrapolation with a known mechanism | $38.86 | $22.47 | $15.95 | $37.03 |
-| 3 · speculation, no mechanism | $23.14 | **−$24.38** | **−$22.84** | **$5.49** |
+| 1 · applicable record | $87.16 | $86.01 | $64.89 | $92.05 |
+| 2 · extrapolation with a known mechanism | $40.02 | $23.85 | $17.10 | $38.36 |
+| 3 · speculation, no mechanism | $20.07 | **−$28.22** | **−$25.91** | **$1.69** |
 
 All figures $/MWh. At the design basis **only gold pays** — heat and synfuel both *raise*
 the cost of electricity, because the plant is too expensive for its own heat or hydrogen
-to be worth diverting. The plant's own levers carry $87.4/MWh of the descent, more than
+to be worth diverting. The plant's own levers carry $90.4/MWh of the descent, more than
 any co-product buys.
 
 ## Reproducing
@@ -42,9 +42,9 @@ python revenue_tornado.py          # figures/revenue_tornado.png
 ```
   rung                      elec only    + heat    + gold  + synfuel
   0: design basis              110.50    116.23     89.35     112.80
-  1: applicable record          85.33     83.94     63.07      90.08
-  2: extrapolation              38.86     22.47     15.95      37.03
-  3: speculation                23.14    -24.38    -22.84       5.49
+  1: applicable record          87.16     86.01     64.89      92.05
+  2: extrapolation              40.02     23.85     17.10      38.36
+  3: speculation                20.07    -28.22    -25.91       1.69
 ```
 
 The gold co-product ledger and the three interactive tools were produced against a
@@ -118,17 +118,22 @@ required to reproduce the ladder or the tornado**, which carry their own model.
   fourteen-year cooldown at 3% rather than the plant's own 7% WACC, and excludes the
   enrichment plant. Heat and synfuel get no equivalent head start. This asymmetry is
   deliberate and documented, not accidental.
-- **The enrichment plant is excluded at every rung.** Photon economics put it at
-  $40–500M, or $0.25–3.07/MWh — small, but not zero. Priced on a gas-centrifuge basis it
-  would have been $2.6B; the difference is that photochemical separation prices on optical
-  power, and the photon budget for the whole inventory is about 20 kW of average UV.
+- **Enrichment-plant capital is excluded at every rung; separation opex is charged.** The
+  article follows Marathon's own estimate that photochemical ¹⁹⁸Hg separation needs
+  negligible plant capital (under $1M) and costs about $2.4/kg of ¹⁹⁸Hg to run; that opex
+  is a line in the gold ledger, the capital is not. (An earlier draft priced a separation
+  plant at $40–500M, or $0.25–3.07/MWh; on a gas-centrifuge basis it would have been $2.6B.)
 - **The heat price row is the least sourced part of the analysis.** The $20, $40 and
   $50/MWh-th values and the $40/kW-yr capacity payment are estimates, not citations.
 - **Gold production saturates.** Output is read off Marathon's own neutronics scan rather
   than assumed: doubling the mercury buys about +51%, and their reference blanket costs
   4.15× the mercury for 1.9× the gold.
-- The plant ladder is the mature corridor's compact-tokamak result rescaled onto this
-  dispatch's 1 GWe D-T baseline, not a direct 1costingFE run of this machine.
+- The plant ladder is the mature corridor's compact-tokamak result at 1 GWe
+  ([Magnetic_DT_Corridor](https://github.com/1cFE/Magnetic_DT_Corridor), `corridor_tiers.json`,
+  `tok_1g`: 114.58 / 90.38 / 41.49 / 20.81 $/MWh) rescaled onto this dispatch's $110.5
+  baseline, `PLANT = 110.5 × CT / CT[0]`, not a direct 1costingFE run of this machine. Its
+  tier 3 carries lights-out O&M (fixed O&M × 0.0855) and the 20%-nominal indirect-cost
+  convention, as the mature and pulsed ladders do.
 
 ## Contact
 
