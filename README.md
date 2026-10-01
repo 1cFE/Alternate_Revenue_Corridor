@@ -139,3 +139,7 @@ required to reproduce the ladder or the tornado**, which carry their own model.
 
 Questions or challenges to the assumptions and methodology are welcome at
 [1cf.energy/contact](https://1cf.energy/contact).
+
+## License
+
+Original code and associated documentation in this repository are available under the [MIT License](LICENSE), copyright 2026 Astera Institute, consistent with [Astera's Open Science Policy](https://astera.org/open-science-policy/). Third-party material retains its original copyright and license.
